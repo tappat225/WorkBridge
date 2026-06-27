@@ -1,5 +1,4 @@
 [client]
-mcp_url = https://<your-domain>/_mcp
-auth_token = <your-bearer-token>
-socket_path = /tmp/mcp-daemon.sock
-pid_file = /tmp/mcp-daemon.pid
+master_url = https://<your-domain>/wb
+client_token = <your-client-token>
+timeout = 120

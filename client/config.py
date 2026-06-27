@@ -8,10 +8,9 @@ from pathlib import Path
 
 @dataclass
 class ClientConfig:
-    mcp_url: str = "https://<your-domain>/_mcp"
-    auth_token: str = ""
-    socket_path: str = "/tmp/mcp-daemon.sock"
-    pid_file: str = "/tmp/mcp-daemon.pid"
+    master_url: str = "https://<your-domain>/wb"
+    client_token: str = ""
+    timeout: int = 120
 
 
 def _env(name, fallback):
@@ -36,6 +35,13 @@ def _read_ini(path):
     return parser
 
 
+def _as_int(value, name):
+    try:
+        return int(value)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{name} must be an integer") from e
+
+
 def load_client_config(path=None):
     config_path = Path(path).expanduser() if path else next(
         (candidate for candidate in _candidate_paths() if candidate.exists()),
@@ -45,8 +51,7 @@ def load_client_config(path=None):
     section = parser["client"] if parser.has_section("client") else {}
 
     return ClientConfig(
-        mcp_url=_env("MCP_URL", section.get("mcp_url", ClientConfig.mcp_url)),
-        auth_token=_env("AUTH_TOKEN", section.get("auth_token", ClientConfig.auth_token)),
-        socket_path=_env("MCP_SOCKET_PATH", section.get("socket_path", ClientConfig.socket_path)),
-        pid_file=_env("MCP_PID_FILE", section.get("pid_file", ClientConfig.pid_file)),
+        master_url=_env("MASTER_URL", section.get("master_url", ClientConfig.master_url)),
+        client_token=_env("CLIENT_TOKEN", section.get("client_token", ClientConfig.client_token)),
+        timeout=_as_int(_env("CLIENT_TIMEOUT", section.get("timeout", ClientConfig.timeout)), "CLIENT_TIMEOUT"),
     )

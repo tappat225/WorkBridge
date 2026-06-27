@@ -35,9 +35,7 @@ WorkBridge/
 │   ├── requirements.txt            #   Python dependencies
 │   └── config.toml.example         #   Configuration template
 ├── client/                         # Client: CLI + Daemon
-│   ├── mcp_client.py               #   Command-line client
-│   ├── mcp_daemon.py               #   Persistent MCP session daemon
-│   ├── test_nginx.py               #   End-to-end test script
+│   ├── workbridge_client.py        #   Command-line client
 │   └── config.ini.example          #   Configuration template
 ├── README.md
 ├── agent.md
@@ -247,10 +245,12 @@ passed with `--config` / `WORKBRIDGE_CLIENT_CONFIG`.
 
 | INI key | Env override | Default | Description |
 |---|---|---|---|
-| `client.mcp_url` | `MCP_URL` | `https://<your-domain>/_mcp` | MCP server endpoint |
-| `client.auth_token` | `AUTH_TOKEN` | (required) | Bearer token |
-| `client.socket_path` | `MCP_SOCKET_PATH` | `/tmp/mcp-daemon.sock` | Daemon Unix socket path |
-| `client.pid_file` | `MCP_PID_FILE` | `/tmp/mcp-daemon.pid` | Daemon PID file path |
+| `client.master_url` | `MASTER_URL` | `https://<your-domain>/wb` | Master API base URL |
+| `client.client_token` | `CLIENT_TOKEN` | (required) | Client bearer token |
+| `client.timeout` | `CLIENT_TIMEOUT` | `120` | Synchronous task timeout in seconds |
+
+The client intentionally has no default node. Run `list_nodes` and pass
+`--node <node-id>` on every worker operation.
 
 ## Build System
 
