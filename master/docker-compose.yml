@@ -9,12 +9,9 @@ services:
       - "127.0.0.1:9210:9210"
     volumes:
       - master-data:/app/data
-    env_file:
-      - .env
+      - ./config.toml:/etc/workbridge/master.toml:ro
     environment:
-      - MASTER_HOST=0.0.0.0
-      - MASTER_PORT=9210
-      - MASTER_DB=/app/data/registry.db
+      - WORKBRIDGE_CONFIG=/etc/workbridge/master.toml
 
 volumes:
   master-data:

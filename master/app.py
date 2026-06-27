@@ -8,7 +8,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from shared.config import MasterConfig
+from shared.config import MasterConfig, load_master_config
 from .registry import Registry
 from .broker import Broker
 from .router import Router
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def create_app(config: MasterConfig = None) -> Starlette:
     if config is None:
-        config = MasterConfig()
+        config = load_master_config()
 
     registry = Registry(db_path=config.db_path)
     broker = Broker()
@@ -55,6 +55,6 @@ def create_app(config: MasterConfig = None) -> Starlette:
 
 if __name__ == "__main__":
     import uvicorn
-    config = MasterConfig()
+    config = load_master_config()
     app = create_app(config)
     uvicorn.run(app, host=config.host, port=config.port)

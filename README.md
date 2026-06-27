@@ -22,7 +22,7 @@ WorkBridge/
 │   ├── Dockerfile                  #   Container image
 │   ├── docker-compose.yml          #   One-command startup
 │   ├── requirements.txt            #   Python dependencies
-│   └── .env.example                #   Environment variable template
+│   └── config.toml.example         #   Configuration template
 ├── worker/                         # Worker: execution plane
 │   ├── daemon.py                   #   Main process (register + SSE listen + reconnect)
 │   ├── reporter.py                 #   Result reporter (POST back to Master)
@@ -33,12 +33,12 @@ WorkBridge/
 │   ├── Dockerfile                  #   Container image
 │   ├── docker-compose.yml          #   One-command startup
 │   ├── requirements.txt            #   Python dependencies
-│   └── .env.example                #   Environment variable template
+│   └── config.toml.example         #   Configuration template
 ├── client/                         # Client: CLI + Daemon
 │   ├── mcp_client.py               #   Command-line client
 │   ├── mcp_daemon.py               #   Persistent MCP session daemon
 │   ├── test_nginx.py               #   End-to-end test script
-│   └── .env.example                #   Environment variable template
+│   └── config.ini.example          #   Configuration template
 ├── README.md
 ├── agent.md
 └── .gitignore
@@ -81,8 +81,8 @@ WorkBridge/
 
 ```bash
 cd master/
-cp .env.example .env
-# Edit .env: set NODE_TOKEN and CLIENT_TOKEN
+cp config.toml.example config.toml
+# Edit config.toml: set auth.node_token and auth.client_token
 
 docker compose up -d --build
 ```
@@ -93,13 +93,20 @@ Master listens on `127.0.0.1:9210`. Use Nginx to expose it over HTTPS.
 
 ```bash
 cd worker/
-cp .env.example .env
-# Edit .env: set NODE_ID, MASTER_URL, NODE_TOKEN, WORKSPACE_DIR
+cp config.toml.example config.toml
+# Edit config.toml: set worker.node_id, worker.master_url, and auth.node_token
 
 docker compose up -d --build
 ```
 
 The worker connects outbound to Master and waits for tasks.
+
+To mount a different host workspace into the worker container, set
+`WORKBRIDGE_WORKSPACE_DIR` when starting Docker Compose:
+
+```bash
+WORKBRIDGE_WORKSPACE_DIR=/home/ubuntu/repo docker compose up -d --build
+```
 
 ### 3. Dispatch a task
 
@@ -126,36 +133,57 @@ curl -X POST https://<master-domain>:9210/api/tasks/dispatch_sync \
 
 ## Configuration
 
-### Master (`master/.env`)
+Configuration is loaded from local files by default. Environment variables are
+still supported as an override layer for container orchestration and secret
+injection.
 
-| Env var | Default | Description |
-|---|---|---|
-| `MASTER_HOST` | `0.0.0.0` | Bind address |
-| `MASTER_PORT` | `9210` | Listen port |
-| `NODE_TOKEN` | (required) | Token for worker authentication |
-| `CLIENT_TOKEN` | (required) | Token for client/agent authentication |
-| `HEARTBEAT_TIMEOUT` | `60` | Seconds before marking node offline |
-| `MASTER_DB` | `/app/data/registry.db` | SQLite database path |
+Load order:
 
-### Worker (`worker/.env`)
+```text
+environment variables > configuration file > defaults
+```
 
-| Env var | Default | Description |
-|---|---|---|
-| `NODE_ID` | (required) | Unique identifier for this worker |
-| `MASTER_URL` | (required) | Master endpoint URL |
-| `NODE_TOKEN` | (required) | Authentication token (must match Master) |
-| `WORKSPACE_DIR` | `/home/ubuntu/repo` | Host directory to mount as workspace |
-| `COMMAND_TIMEOUT` | `120` | Shell command timeout in seconds |
-| `RECONNECT_INTERVAL` | `5` | Seconds between reconnect attempts |
+### Master (`master/config.toml`)
 
-### Client (`client/.env`)
+| TOML key | Env override | Default | Description |
+|---|---|---|---|
+| `master.host` | `MASTER_HOST` | `0.0.0.0` | Bind address |
+| `master.port` | `MASTER_PORT` | `9210` | Listen port |
+| `auth.node_token` | `NODE_TOKEN` | (required) | Token for worker authentication |
+| `auth.client_token` | `CLIENT_TOKEN` | (required) | Token for client/agent authentication |
+| `master.heartbeat_timeout` | `HEARTBEAT_TIMEOUT` | `60` | Seconds before marking node offline |
+| `master.db_path` | `MASTER_DB` | `/app/data/registry.db` | SQLite database path |
 
-| Env var | Default | Description |
-|---|---|---|
-| `MCP_URL` | `https://<your-domain>/_mcp` | MCP server endpoint |
-| `AUTH_TOKEN` | (required) | Bearer token |
-| `MCP_SOCKET_PATH` | `/tmp/mcp-daemon.sock` | Daemon Unix socket path |
-| `MCP_PID_FILE` | `/tmp/mcp-daemon.pid` | Daemon PID file path |
+The Master container reads `/etc/workbridge/master.toml`; the provided Compose
+file mounts `master/config.toml` there automatically.
+
+### Worker (`worker/config.toml`)
+
+| TOML key | Env override | Default | Description |
+|---|---|---|---|
+| `worker.node_id` | `NODE_ID` | (required) | Unique identifier for this worker |
+| `worker.master_url` | `MASTER_URL` | `https://localhost:9210` | Master endpoint URL |
+| `auth.node_token` | `NODE_TOKEN` | (required) | Authentication token (must match Master) |
+| `worker.workspace` | `WORKSPACE_DIR` | `/workspace` | Container workspace path |
+| `worker.command_timeout` | `COMMAND_TIMEOUT` | `120` | Shell command timeout in seconds |
+| `worker.reconnect_interval` | `RECONNECT_INTERVAL` | `5` | Seconds between reconnect attempts |
+
+The Worker container reads `/etc/workbridge/worker.toml`; the provided Compose
+file mounts `worker/config.toml` there automatically. The host directory mounted
+to `/workspace` is controlled by `WORKBRIDGE_WORKSPACE_DIR`.
+
+### Client (`client/config.ini`)
+
+The client uses INI so it can run on older Python versions without installing
+extra dependencies. It automatically reads `client/config.ini`, or a custom path
+passed with `--config` / `WORKBRIDGE_CLIENT_CONFIG`.
+
+| INI key | Env override | Default | Description |
+|---|---|---|---|
+| `client.mcp_url` | `MCP_URL` | `https://<your-domain>/_mcp` | MCP server endpoint |
+| `client.auth_token` | `AUTH_TOKEN` | (required) | Bearer token |
+| `client.socket_path` | `MCP_SOCKET_PATH` | `/tmp/mcp-daemon.sock` | Daemon Unix socket path |
+| `client.pid_file` | `MCP_PID_FILE` | `/tmp/mcp-daemon.pid` | Daemon PID file path |
 
 ## Security
 
@@ -164,7 +192,7 @@ curl -X POST https://<master-domain>:9210/api/tasks/dispatch_sync \
 - **Path traversal blocked**: All file operations enforce workspace boundary via realpath validation
 - **Container isolation**: Both Master and Worker run as non-root in Docker containers
 - **Command timeout**: Long-running commands are killed automatically
-- **No hardcoded secrets**: All tokens loaded from environment variables
+- **No hardcoded secrets**: Tokens are loaded from local config files or environment overrides
 - **Local-only Master port**: Master binds to 127.0.0.1, exposed only via Nginx reverse proxy
 
 ## Troubleshooting

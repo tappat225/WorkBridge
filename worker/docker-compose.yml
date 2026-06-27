@@ -6,8 +6,7 @@ services:
     container_name: workbridge-worker
     restart: unless-stopped
     volumes:
-      - ${WORKSPACE_DIR:-/home/ubuntu/repo}:/workspace:rw
-    env_file:
-      - .env
+      - ${WORKBRIDGE_WORKSPACE_DIR:-/home/ubuntu/repo}:/workspace:rw
+      - ./config.toml:/etc/workbridge/worker.toml:ro
     environment:
-      - WORKSPACE_DIR=/workspace
+      - WORKBRIDGE_CONFIG=/etc/workbridge/worker.toml

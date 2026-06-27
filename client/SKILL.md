@@ -4,15 +4,17 @@
 
 ## Setup
 
-Before any tool calls, ensure these environment variables are set:
+Before any tool calls, ensure `client/config.ini` exists:
 
 ```bash
-source client/.env
+cp client/config.ini.example client/config.ini
 ```
 
-Required variables:
-- `MCP_URL` — the server endpoint (e.g. `https://your-domain/_mcp`)
-- `AUTH_TOKEN` — the Bearer token for authentication
+Required settings:
+- `mcp_url` — the server endpoint (e.g. `https://your-domain/_mcp`)
+- `auth_token` — the Bearer token for authentication
+
+You can also pass a custom file with `--config path/to/config.ini`.
 
 Verify connectivity with `system_info` before doing anything else.
 
@@ -147,8 +149,7 @@ The client auto-detects the daemon socket. No special flags needed.
 For exploratory work, the interactive shell mode lets you type commands directly:
 
 ```bash
-cd client/ && source .env
-python3 mcp_client.py shell
+python3 client/mcp_client.py shell
 ```
 
 At the `>` prompt, type tool invocations without the `python3 mcp_client.py` prefix:
@@ -167,7 +168,7 @@ Type `help` inside the shell for a quick reference.
 
 | Symptom | Likely cause | Action |
 |---|---|---|
-| `HTTP 401` | Wrong or expired token | Check `AUTH_TOKEN` in `client/.env` |
+| `HTTP 401` | Wrong or expired token | Check `auth_token` in `client/config.ini` |
 | `HTTP 502` or connection refused | Server is down | Ask the operator to restart the Docker container |
 | `Path traversal denied` | Used `../` or an absolute path outside `/workspace` | Use a workspace-relative path |
 | `File not found` | Wrong path or file doesn't exist | Use `list_directory` to verify the path |

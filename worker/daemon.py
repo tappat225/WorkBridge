@@ -8,7 +8,7 @@ import ssl
 import urllib.request
 import urllib.error
 
-from shared.config import WorkerConfig
+from shared.config import WorkerConfig, load_worker_config
 from shared.protocol import TaskResult, TaskStatus, TaskType
 from .executor.shell import ShellExecutor
 from .executor.file import FileExecutor
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class WorkerDaemon:
     def __init__(self, config: WorkerConfig = None):
-        self._config = config or WorkerConfig()
+        self._config = config or load_worker_config()
         self._shell = ShellExecutor(self._config.workspace, self._config.command_timeout)
         self._file = FileExecutor(self._config.workspace)
         self._reporter = Reporter(self._config.master_url, self._config.node_token)

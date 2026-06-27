@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Test MCP server through Nginx HTTPS proxy"""
-import json, os, ssl, urllib.request, urllib.error
+import json, ssl, urllib.request, urllib.error
 
-url = os.environ.get("MCP_URL", "https://<your-domain>/_mcp")
-token = os.environ.get("AUTH_TOKEN", "<your-bearer-token>")
+try:
+    from .config import load_client_config
+except ImportError:
+    from config import load_client_config
+
+config = load_client_config()
+url = config.mcp_url
+token = config.auth_token
 ctx = ssl.create_default_context()
 sid = None
 req_id = 0

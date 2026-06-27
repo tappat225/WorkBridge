@@ -22,12 +22,18 @@ import socket
 import urllib.request
 import urllib.error
 
+try:
+    from .config import load_client_config
+except ImportError:
+    from config import load_client_config
+
 # ============================================================
-# Configuration (set via environment variables)
+# Configuration
 # ============================================================
-MCP_URL = os.environ.get("MCP_URL", "https://<your-domain>/_mcp")
-AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "<your-bearer-token>")
-SOCKET_PATH = os.environ.get("MCP_SOCKET_PATH", "/tmp/mcp-daemon.sock")
+CONFIG = load_client_config()
+MCP_URL = CONFIG.mcp_url
+AUTH_TOKEN = CONFIG.auth_token
+SOCKET_PATH = CONFIG.socket_path
 
 TOOLS = {
     "run_command":    {"args": ["command"],          "desc": "Execute a shell command"},
@@ -78,9 +84,9 @@ def daemon_is_running():
 # Direct connection (fallback)
 # ============================================================
 class DirectClient:
-    def __init__(self, url=MCP_URL, token=AUTH_TOKEN):
-        self.url = url
-        self.token = token
+    def __init__(self, url=None, token=None):
+        self.url = url or MCP_URL
+        self.token = token or AUTH_TOKEN
         self.session_id = None
         self._req_id = 0
 
@@ -253,6 +259,19 @@ def _print_help():
 # CLI dispatcher
 # ============================================================
 def main():
+    global CONFIG, MCP_URL, AUTH_TOKEN, SOCKET_PATH
+
+    if "--config" in sys.argv:
+        idx = sys.argv.index("--config")
+        if idx + 1 >= len(sys.argv):
+            print("error: --config requires a path", file=sys.stderr)
+            sys.exit(1)
+        CONFIG = load_client_config(sys.argv[idx + 1])
+        MCP_URL = CONFIG.mcp_url
+        AUTH_TOKEN = CONFIG.auth_token
+        SOCKET_PATH = CONFIG.socket_path
+        del sys.argv[idx:idx + 2]
+
     if len(sys.argv) < 2:
         _print_help()
         sys.exit(1)

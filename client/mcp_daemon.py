@@ -24,13 +24,19 @@ import urllib.request
 import urllib.error
 import threading
 
+try:
+    from .config import load_client_config
+except ImportError:
+    from config import load_client_config
+
 # ============================================================
-# Configuration (set via environment variables)
+# Configuration
 # ============================================================
-MCP_URL = os.environ.get("MCP_URL", "https://<your-domain>/_mcp")
-AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "<your-bearer-token>")
-SOCKET_PATH = os.environ.get("MCP_SOCKET_PATH", "/tmp/mcp-daemon.sock")
-PID_FILE = os.environ.get("MCP_PID_FILE", "/tmp/mcp-daemon.pid")
+CONFIG = load_client_config()
+MCP_URL = CONFIG.mcp_url
+AUTH_TOKEN = CONFIG.auth_token
+SOCKET_PATH = CONFIG.socket_path
+PID_FILE = CONFIG.pid_file
 KEEPALIVE_INTERVAL = 180  # seconds between keep-alive pings
 MAX_RECONNECT_DELAY = 60  # max seconds to wait before reconnect
 
@@ -39,9 +45,9 @@ MAX_RECONNECT_DELAY = 60  # max seconds to wait before reconnect
 # MCP Session (managed persistent connection)
 # ============================================================
 class McpSession:
-    def __init__(self, url=MCP_URL, token=AUTH_TOKEN):
-        self.url = url
-        self.token = token
+    def __init__(self, url=None, token=None):
+        self.url = url or MCP_URL
+        self.token = token or AUTH_TOKEN
         self.session_id = None
         self._req_id = 0
         self._lock = threading.Lock()
@@ -338,9 +344,17 @@ def run_foreground():
 # ============================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MCP Daemon")
+    parser.add_argument("--config", help="path to client INI config")
     parser.add_argument("--daemonize", action="store_true", help="run in background")
     parser.add_argument("--stop", action="store_true", help="stop running daemon")
     args = parser.parse_args()
+
+    if args.config:
+        CONFIG = load_client_config(args.config)
+        MCP_URL = CONFIG.mcp_url
+        AUTH_TOKEN = CONFIG.auth_token
+        SOCKET_PATH = CONFIG.socket_path
+        PID_FILE = CONFIG.pid_file
 
     if args.stop:
         stop_daemon()

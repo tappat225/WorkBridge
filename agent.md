@@ -44,8 +44,9 @@ All program output (including `print()`, log messages, tool return strings, CLI 
 ### 3. No Hardcoded Secrets
 
 - Tokens, keys, URLs, and domain names **must never** be hardcoded in source code
-- Always use `os.environ.get("VAR_NAME", "placeholder")` to read from environment
-- Provide `.env.example` template files with `<your-xxx>` placeholders
+- Load application configuration through the project config loaders
+- Environment variables may override file-based configuration for deployment and secrets
+- Provide `config.toml.example` or `config.ini.example` template files with `<your-xxx>` placeholders
 - Real config files must be listed in `.gitignore`
 
 ### 4. Configuration File Pattern
@@ -53,11 +54,12 @@ All program output (including `print()`, log messages, tool return strings, CLI 
 ```
 Real config (gitignored)     Template (committed)
 ------------------------     --------------------
-server/.env                  server/.env.example
-client/.env                  client/.env.example
+master/config.toml           master/config.toml.example
+worker/config.toml           worker/config.toml.example
+client/config.ini            client/config.ini.example
 ```
 
-When modifying configuration: update the `.example` template first, then inform the user to sync their local real config.
+When modifying configuration: update the matching `.example` template first, then inform the user to sync their local real config.
 
 ### 5. Directory Structure and Separation
 
@@ -102,7 +104,8 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
 - All file operations in executors must validate paths against workspace boundary
 - Use `Path.resolve()` + `startswith()` check against workspace root
 - Path traversal (`../`) must be denied
-- Workspace root is controlled by `WORKSPACE_DIR` environment variable
+- Worker workspace defaults to `/workspace` and is configured by `worker.workspace` or the `WORKSPACE_DIR` override
+- The Docker host directory mounted at `/workspace` is controlled by `WORKBRIDGE_WORKSPACE_DIR`
 
 ### 11. Error Handling
 
@@ -125,4 +128,4 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
 
 - Commit messages must be in English, using a concise imperative style
 - Example: `Add task dispatch endpoint to master API`
-- Before committing, verify no sensitive files (.env, real tokens) are included
+- Before committing, verify no sensitive files (.env, real config files, real tokens) are included
