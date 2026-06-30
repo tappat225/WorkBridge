@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Authentication middleware for Master API."""
 
 from starlette.requests import Request

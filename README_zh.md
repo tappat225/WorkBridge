@@ -311,4 +311,10 @@ Use China mirrors (tuna.tsinghua.edu.cn)? [Y/n]:
 
 ## License
 
-[MIT](LICENSE)
+GaiaBridge 使用 open-core 授权模式：
+
+- `client/`、`worker/`、`shared/`、`doc/`、部署工具和根目录项目文件使用 Apache-2.0。
+- `master/` 是 Community Master，使用 AGPL-3.0-only。
+- 商业 Master 管理系统、Hosted 服务、计费、租户管理、区域中继、企业策略和相关云服务功能可以在独立闭源商业条款下开发和分发。
+
+详见 [LICENSE](LICENSE)。

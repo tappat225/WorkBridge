@@ -1,0 +1,23 @@
+Apache License, Version 2.0 Notice
+
+SPDX identifier:
+
+Apache-2.0
+
+Canonical license text:
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+This notice applies to the GaiaBridge client, worker, shared protocol,
+deployment tooling, documentation, and other files identified as Apache-2.0
+in the repository-level LICENSE file.
+
+Copyright notice for GaiaBridge:
+
+Copyright (c) 2026 TappaT
+
+Unless required by applicable law or agreed to in writing, Apache-2.0
+components are distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the Apache License,
+Version 2.0 for the specific language governing permissions and limitations
+under the License.

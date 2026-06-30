@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Task dispatch and result API endpoints."""
 
 from starlette.requests import Request

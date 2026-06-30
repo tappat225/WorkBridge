@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Worker daemon: connects to Master via SSE and executes tasks."""
 
 import asyncio

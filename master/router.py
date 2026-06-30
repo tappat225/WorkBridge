@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Task router: dispatches tasks and matches results."""
 
 import asyncio

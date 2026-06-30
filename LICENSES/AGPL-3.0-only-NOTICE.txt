@@ -1,0 +1,30 @@
+GNU Affero General Public License v3.0 Only Notice
+
+SPDX identifier:
+
+AGPL-3.0-only
+
+Canonical license text:
+
+https://www.gnu.org/licenses/agpl-3.0.html
+
+Plain-text license:
+
+https://www.gnu.org/licenses/agpl-3.0.txt
+
+This notice applies to the GaiaBridge Community Master files identified as
+AGPL-3.0-only in the repository-level LICENSE file, including files under
+master/.
+
+Copyright notice for GaiaBridge:
+
+Copyright (c) 2026 TappaT
+
+The GNU Affero General Public License is designed for network server
+software. If you modify the AGPL-licensed Master and allow users to interact
+with it remotely through a computer network, you must comply with the AGPL's
+network source code requirements.
+
+AGPL-3.0-only components are distributed WITHOUT ANY WARRANTY; without even
+the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Affero General Public License for details.

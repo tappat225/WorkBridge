@@ -383,3 +383,16 @@ DOCKER_BUILDKIT=0 docker build --no-cache --network=host \
 cd master/ && docker compose up -d
 # Repeat for worker/
 ```
+
+## License
+
+GaiaBridge uses an open-core licensing model:
+
+- `client/`, `worker/`, `shared/`, `doc/`, deployment tooling, and root-level
+  project files are licensed under Apache-2.0.
+- `master/` is the Community Master and is licensed under AGPL-3.0-only.
+- Commercial Master management, hosted service, billing, tenant
+  administration, regional relay, enterprise policy, and related cloud
+  features may be developed separately under proprietary commercial terms.
+
+See [LICENSE](LICENSE) for the full repository license notice.

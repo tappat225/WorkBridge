@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Result reporter: sends execution results back to Master."""
 
 import json

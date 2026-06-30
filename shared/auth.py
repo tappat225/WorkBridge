@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Token generation and verification utilities."""
 
 import hashlib

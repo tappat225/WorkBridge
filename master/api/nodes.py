@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """Node management API endpoints."""
 
 import asyncio

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Shared protocol definitions for GaiaBridge distributed system."""
 
 from __future__ import annotations

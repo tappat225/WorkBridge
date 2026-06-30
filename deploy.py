@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """GaiaBridge unified deployment script.
 
 Dual-mode: interactive (menu-driven) or batch (CLI arguments).

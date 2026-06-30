@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 """SSE connection pool manager (Broker)."""
 
 import asyncio

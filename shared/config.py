@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Configuration schemas and loaders for Master and Worker."""
 
 import os

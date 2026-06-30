@@ -1,21 +1,63 @@
-MIT License
-
+GaiaBridge Multi-License Notice
 Copyright (c) 2026 TappaT
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+GaiaBridge uses an open-core licensing model.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Unless a file contains a different SPDX license identifier or an explicit
+license notice, the repository is licensed as follows:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+1. Community Master
+
+   Files under:
+
+   - master/
+
+   are licensed under the GNU Affero General Public License v3.0 only
+   (AGPL-3.0-only).
+
+   See:
+
+   - LICENSES/AGPL-3.0-only-NOTICE.txt
+   - https://www.gnu.org/licenses/agpl-3.0.html
+
+2. Client, Worker, Shared Protocol, Deployment, and Documentation
+
+   Files under:
+
+   - client/
+   - worker/
+   - shared/
+   - doc/
+
+   and root-level project files, including deploy.py, README.md,
+   README_zh.md, AGENTS.md, and CLAUDE.md, are licensed under the
+   Apache License, Version 2.0 (Apache-2.0).
+
+   See:
+
+   - LICENSES/Apache-2.0-NOTICE.txt
+   - https://www.apache.org/licenses/LICENSE-2.0
+
+3. Commercial Master Management System
+
+   GaiaBridge may include or be accompanied by commercial Master management,
+   hosted service, billing, tenant administration, regional relay operations,
+   enterprise policy, or other commercial cloud features.
+
+   Those commercial components are not licensed under this repository's open
+   source licenses unless they are explicitly committed here with an open
+   source license notice. They may be developed and distributed separately
+   under proprietary commercial terms.
+
+4. Trademark Notice
+
+   This license notice does not grant permission to use GaiaBridge names,
+   logos, trademarks, service marks, or product branding except as required
+   for reasonable descriptive use.
+
+5. Earlier MIT-Licensed Versions
+
+   If a previous public version of GaiaBridge was distributed under the MIT
+   License, that historical version remains available under the license terms
+   that applied to that version. New versions and new contributions after this
+   license change are governed by the license boundaries described above.

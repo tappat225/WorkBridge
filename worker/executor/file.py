@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """File operation executor."""
 
 from pathlib import Path

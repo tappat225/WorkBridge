@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """GaiaBridge client: dispatch tasks to a worker through the Master API."""
 
 import argparse
