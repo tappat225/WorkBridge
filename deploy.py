@@ -154,6 +154,29 @@ def _command_ok(cmd: list[str]) -> bool:
     ).returncode == 0
 
 
+def _python_needs_tomli(python_exe: str | None = None) -> bool:
+    """Return True when the Python interpreter is older than 3.11.
+
+    Python 3.11 added ``tomllib`` to the standard library.  Older versions
+    need the third-party ``tomli`` package to parse TOML configuration files.
+    """
+    exe = python_exe or sys.executable
+    result = subprocess.run(
+        [exe, "-c", "import sys; print(sys.version_info[:2])"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return True  # assume the worst if we can't determine the version
+    try:
+        major, minor = eval(result.stdout.strip())
+        return (major, minor) < (3, 11)
+    except Exception:
+        return True
+
+
 def _docker_container_running(name: str) -> bool:
     """Return True if a Docker container exists and is running."""
     if not _detect_docker():
@@ -524,6 +547,7 @@ def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
 
     # 3. Create venv
     venv_dir = gaia_dir / "venv"
+    venv_python = str(_venv_bin(venv_dir, "python"))
     if not venv_dir.exists():
         print(f"Creating virtual environment at {venv_dir} ...")
         _run_checked([sys.executable, "-m", "venv", str(venv_dir)])
@@ -537,8 +561,24 @@ def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
         pip_env["PIP_INDEX_URL"] = "https://pypi.tuna.tsinghua.edu.cn/simple"
         print("Using China mirror for pip.")
 
+    # Python < 3.11 needs the third-party ``tomli`` package to parse TOML.
+    needs_tomli = _python_needs_tomli(venv_python) if venv_dir.exists() else _python_needs_tomli()
+    if needs_tomli:
+        print()
+        print("=" * 60)
+        print("  Notice: Python < 3.11 detected")
+        print("=" * 60)
+        print("  tomllib (TOML parser) was added in Python 3.11.")
+        print("  The third-party package 'tomli' will be installed")
+        print("  automatically so the worker can read its config file.")
+        print("=" * 60)
+        print()
+
     print(f"Installing dependencies from {req_file} ...")
-    _run_checked([pip_cmd, "install", "-r", str(req_file)], env=pip_env)
+    install_cmd = [pip_cmd, "install", "-r", str(req_file)]
+    if needs_tomli:
+        install_cmd.append("tomli")
+    _run_checked(install_cmd, env=pip_env)
 
     # 5. Install and start the platform service
     if sys.platform == "linux":
