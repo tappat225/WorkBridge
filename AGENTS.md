@@ -94,11 +94,13 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
 
 ### 10. Path Security
 
-- All file operations in executors must validate paths against workspace boundary
-- Use `Path.resolve()` + `startswith()` check against workspace root
-- Path traversal (`../`) must be denied
-- Worker workspace defaults to `/workspace` and is configured by `worker.workspace` or the `WORKSPACE_DIR` override
-- The Docker host directory mounted at `/workspace` is controlled by `GAIABRIDGE_HOST_WORKSPACE`
+- **Container mode**: filesystem isolation is provided by Docker namespace boundaries
+- **Host mode**: the worker has full host filesystem access; security is enforced
+  at the tool-calling / Master layer rather than at the filesystem level
+- Worker workspace is configured by `worker.workspace` or the `WORKSPACE_DIR`
+  override. In container mode it defaults to `/workspace`; in host mode to `/`.
+- The Docker host directory mounted at `/workspace` is controlled by
+  `GAIABRIDGE_HOST_WORKSPACE`
 
 ### 11. Error Handling
 
@@ -154,11 +156,14 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
 
 ### 16. Workspace
 
+- The workspace setting is a base directory for resolving relative task
+  paths — it is not a security boundary.
 - In **container mode**, Worker `config.toml` must use the container path
   (`/workspace`) for the workspace setting — NOT the host path. The
   user-selected host workspace is bind-mounted into that container path.
-- In **host mode**, workspace is a real host path (default:
-  `~/gaia_bridge_workspace`). Path traversal validation still applies.
+  Docker provides real filesystem isolation.
+- In **host mode**, workspace is set to `/` (full host filesystem access).
+  Security is enforced at the Master / tool-calling layer.
 - `GAIABRIDGE_HOST_WORKSPACE` (env) controls which host directory is
   mounted to `/workspace` in the worker container (container mode only).
 

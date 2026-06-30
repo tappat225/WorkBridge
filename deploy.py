@@ -538,9 +538,6 @@ def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
     })
     print(f"Config written to {config_path}")
 
-    # Ensure workspace exists
-    Path(workspace).mkdir(parents=True, exist_ok=True)
-
     # 2. Install a stable application copy under ~/.gaia_bridge/worker/app
     print(f"Installing worker application copy to {app_dir} ...")
     _sync_worker_app(app_dir)
@@ -590,10 +587,10 @@ def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
 
     print()
     print("Worker deployed successfully (host mode).")
-    print(f"  Config:    {config_path}")
-    print(f"  App:       {app_dir}")
-    print(f"  Workspace: {workspace}")
-    print(f"  Venv:      {venv_dir}")
+    print(f"  Config:      {config_path}")
+    print(f"  App:         {app_dir}")
+    print(f"  Filesystem:  full host access")
+    print(f"  Venv:        {venv_dir}")
     print()
     _print_host_management_commands()
     return 0
@@ -703,9 +700,9 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
         reconnect_interval = "5"
         workspace_for_config = container_ws
     else:
-        print("--- Workspace (Host Mode) ---")
-        workspace_for_config = _ask("Workspace directory", str(_get_user_home() / "gaia_bridge_workspace"))
-        host_ws = workspace_for_config  # not used in host mode, but keep variable clean
+        print("--- Host Mode (full filesystem access) ---")
+        workspace_for_config = "/"
+        host_ws = "/"                    # not used in host mode, but keep variable clean
         container_ws = "/workspace"      # ditto
         command_timeout = _ask("Command timeout (s)", "120")
         reconnect_interval = _ask("Reconnect interval (s)", "5")
@@ -725,7 +722,7 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
         print(f"  Container ws:     {container_ws}")
         print(f"  Host mount:       {host_ws}")
     else:
-        print(f"  Workspace:        {workspace_for_config}")
+        print(f"  Filesystem:       full host access")
         print(f"  Command timeout:  {command_timeout}s")
         print(f"  Reconnect:        {reconnect_interval}s")
     print(f"  Config location:  {config_location}")
