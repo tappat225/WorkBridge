@@ -6,6 +6,7 @@ Usage:
     python3 deploy.py
 """
 
+import argparse
 import os
 import platform
 import secrets
@@ -26,6 +27,7 @@ WORKER_SERVICE_NAME = "capown-worker"
 WORKER_WINDOWS_TASK_NAME = "CapOwnWorker"
 MASTER_CONTAINER_NAME = "capown-master"
 WORKER_CONTAINER_NAME = "capown-worker"
+EXECUTION_CONTAINER_NAME = "capown-worker-exec"
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +266,100 @@ def _confirm_stop_running(kind: str, name: str, stop_func) -> bool:
     stop_func(name)
     print(f"Stopped {kind}: {name}")
     return True
+
+
+# ---------------------------------------------------------------------------
+# enrollment config helpers
+# ---------------------------------------------------------------------------
+
+def _load_toml(path: Path) -> dict:
+    """Load a TOML file into a dict."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "TOML parsing requires Python 3.11+ or the 'tomli' package"
+            ) from e
+    with path.open("rb") as f:
+        return tomllib.load(f)
+
+
+def _mask_token(token: str) -> str:
+    """Mask a token for review display, showing only the first 4 characters."""
+    if not token:
+        return "(not set)"
+    visible = min(4, len(token))
+    return token[:visible] + "*" * min(len(token) - visible, 12)
+
+
+def _load_enrollment_config(path: str) -> dict:
+    """Parse and validate an enrollment config TOML file.
+
+    Returns a normalized dict with keys: role, master_url, node_id,
+    node_token, client_token, execution_mode, workspace_preset,
+    workspace_relative, container_workspace, mirror.
+
+    Raises ValueError on validation failure.
+    """
+    data = _load_toml(Path(path))
+    role = data.get("role", "")
+    if not role:
+        raise ValueError("missing 'role' field")
+    if role not in ("master", "worker", "client"):
+        raise ValueError(f"invalid role '{role}' (must be master, worker, or client)")
+
+    worker_section = data.get("worker", {})
+    deploy_section = data.get("deploy", {})
+
+    cfg = {
+        "role": role,
+        "master_url": data.get("master_url", ""),
+        "node_id": data.get("node_id", ""),
+        "node_token": data.get("node_token", ""),
+        "client_token": data.get("client_token", ""),
+        "execution_mode": worker_section.get("execution_mode", "container"),
+        "workspace_preset": worker_section.get("workspace_preset", "user_home"),
+        "workspace_relative": worker_section.get("workspace_relative", ".capown/workspace"),
+        "container_workspace": worker_section.get("container_workspace", "/workspace"),
+        "mirror": deploy_section.get("mirror", ""),
+    }
+
+    if cfg["mirror"] and cfg["mirror"] not in ("default", "china"):
+        raise ValueError(
+            f"config: invalid mirror '{cfg['mirror']}' "
+            "(must be 'default' or 'china')"
+        )
+
+    if role == "worker":
+        if not cfg["master_url"]:
+            raise ValueError("worker config: missing 'master_url'")
+        if not cfg["node_token"]:
+            raise ValueError("worker config: missing 'node_token'")
+        if not cfg["node_id"]:
+            raise ValueError("worker config: missing 'node_id'")
+
+    if role == "client":
+        if not cfg["master_url"]:
+            raise ValueError("client config: missing 'master_url'")
+        if not cfg["client_token"]:
+            raise ValueError("client config: missing 'client_token'")
+
+    return cfg
+
+
+def _resolve_host_workspace(cfg: dict) -> str:
+    """Resolve workspace preset to an actual host directory path."""
+    preset = cfg.get("workspace_preset", "user_home")
+    if preset == "user_home":
+        relative = cfg.get("workspace_relative", ".capown/workspace")
+        return str(_get_user_home() / relative)
+    return preset
+
+
+# ---------------------------------------------------------------------------
 
 
 def _prepare_master_container_deploy() -> bool:
@@ -510,56 +606,108 @@ def _deploy_master_interactive(env: dict[str, str]) -> int:
 def _deploy_worker_container(env: dict[str, str], node_id: str, master_url: str,
                               node_token: str, workspace: str, host_workspace: str,
                               use_cn: bool) -> int:
-    """Deploy Worker in container mode via docker compose."""
-    worker_dir = SCRIPT_DIR / "worker"
+    """Deploy Worker with Docker execution backend.
 
-    # Write worker config to ~/.capown/worker/config.toml
-    config_dir = _get_user_home() / ".capown" / "worker"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    config_path = config_dir / "config.toml"
-    _write_toml(config_path, {
-        "worker": {
-            "mode": "container",
-            "node_id": node_id,
-            "master_url": master_url,
-            "workspace": workspace,
-            "command_timeout": "120",
-            "reconnect_interval": "5",
-        },
-        "auth": {
-            "node_token": node_token,
-        },
-    })
-    print(f"Worker config written to {config_path}")
-
+    The Worker control process runs on the host as a native OS service.
+    A managed Docker execution container is set up for task execution.
+    Execution container is created *before* the Worker service starts so
+    that a failure in Docker setup does not leave a running Worker with
+    no execution backend.
+    """
     if use_cn:
         env.setdefault("APT_MIRROR", "mirrors.tuna.tsinghua.edu.cn")
         env.setdefault("PIP_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
 
-    env["CAPOWN_HOST_WORKSPACE"] = host_workspace
-    env["CAPOWN_CONTAINER_WORKSPACE"] = workspace
-    env["CAPOWN_WORKER_CONFIG"] = str(config_path)
-
+    # 1. Ensure the host workspace directory exists
     host_path = Path(host_workspace)
     host_path.mkdir(parents=True, exist_ok=True)
 
-    print(f"Deploying worker (container mode)...")
-    print(f"  Host workspace:      {host_workspace}")
-    print(f"  Container workspace: {workspace}")
+    # 2. Set up the managed Docker execution container (before host service)
+    print()
+    print("--- Managed Execution Container ---")
 
-    ret = _docker_compose_up(worker_dir, env)
-    if ret == 0:
-        print("Worker deployed successfully.")
-        print(f"  Config: {config_path}")
+    if not _detect_docker():
+        print("ERROR: Docker not detected. Cannot create execution container.")
+        print("  Set execution_mode to 'host' to run without Docker.")
+        return 1
+
+    # Build execution image
+    exec_dockerfile = SCRIPT_DIR / "worker" / "execution.Dockerfile"
+    if exec_dockerfile.exists():
+        build_cmd = ["docker", "build", "-t", EXECUTION_CONTAINER_NAME,
+                     "-f", str(exec_dockerfile), str(SCRIPT_DIR)]
     else:
-        print("Worker deployment failed. Check docker compose output above.")
-    return ret
+        build_cmd = ["docker", "build", "-t", EXECUTION_CONTAINER_NAME,
+                     "-f", str(SCRIPT_DIR / "worker" / "Dockerfile"),
+                     "--build-arg", f'APT_MIRROR={env.get("APT_MIRROR", "deb.debian.org")}',
+                     "--build-arg", f'PIP_INDEX_URL={env.get("PIP_INDEX_URL", "https://pypi.org/simple")}',
+                     str(SCRIPT_DIR)]
+
+    print("Building execution container image...")
+    build_ret = subprocess.run(build_cmd, env=env)
+    if build_ret.returncode != 0:
+        print("Execution container build failed.")
+        return build_ret.returncode
+
+    # Remove existing container if present
+    subprocess.run(
+        ["docker", "rm", "-f", EXECUTION_CONTAINER_NAME],
+        capture_output=True, check=False,
+    )
+
+    # Start the managed execution container (keeps alive with tail -f)
+    run_cmd = [
+        "docker", "run", "-d",
+        "--name", EXECUTION_CONTAINER_NAME,
+        "--network", "host",
+        "-v", f"{host_workspace}:{workspace}:rw",
+        EXECUTION_CONTAINER_NAME,
+        "tail", "-f", "/dev/null",
+    ]
+    print("Starting managed execution container...")
+    run_ret = subprocess.run(run_cmd, capture_output=True, text=True)
+    if run_ret.returncode != 0:
+        print(f"Failed to start execution container: {run_ret.stderr.strip()}")
+        return run_ret.returncode
+
+    container_id = run_ret.stdout.strip()
+    print(f"Execution container started: {container_id[:12]}")
+    print(f"  Container name: {EXECUTION_CONTAINER_NAME}")
+    print(f"  Host workspace: {host_workspace}")
+    print(f"  Container ws:   {workspace}")
+
+    # 3. Deploy the host-resident Worker control process last so Docker
+    #    failures do not leave a running Worker without an execution backend.
+    print()
+    print("--- Host Worker Control Process ---")
+    ret = _deploy_worker_host(
+        node_id=node_id,
+        master_url=master_url,
+        node_token=node_token,
+        workspace=workspace,
+        command_timeout="120",
+        reconnect_interval="5",
+        use_cn=use_cn,
+        execution_mode="container",
+    )
+    if ret != 0:
+        return ret
+
+    print()
+    print("Worker deployed successfully (container execution backend).")
+    return 0
 
 
 def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
                          workspace: str, command_timeout: str,
-                         reconnect_interval: str, use_cn: bool) -> int:
-    """Deploy Worker in host mode as a native OS service."""
+                         reconnect_interval: str, use_cn: bool,
+                         execution_mode: str = "host") -> int:
+    """Deploy Worker as a native OS service (host-resident control process).
+
+    When *execution_mode* is ``"container"`` the config instructs the daemon
+    to use the Docker execution backend; the managed execution container
+    must be set up separately.
+    """
     if sys.platform not in ("linux", "win32"):
         print("Host mode service deployment currently supports Linux and Windows only.")
         return 1
@@ -570,9 +718,10 @@ def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
 
     # 1. Write config.toml
     config_path = capown_dir / "config.toml"
-    _write_toml(config_path, {
+    config_sections = {
         "worker": {
-            "mode": "host",
+            "execution_mode": execution_mode,
+            "container_name": EXECUTION_CONTAINER_NAME,
             "node_id": node_id,
             "master_url": master_url,
             "workspace": workspace,
@@ -582,7 +731,8 @@ def _deploy_worker_host(node_id: str, master_url: str, node_token: str,
         "auth": {
             "node_token": node_token,
         },
-    })
+    }
+    _write_toml(config_path, config_sections)
     print(f"Config written to {config_path}")
     _chown_to_real_user(config_path)
 
@@ -763,14 +913,252 @@ def _print_host_management_commands() -> None:
         print(f"  schtasks /End /TN {WORKER_WINDOWS_TASK_NAME}")
 
 
+# ---------------------------------------------------------------------------
+# client deployment (config-driven)
+# ---------------------------------------------------------------------------
+
+def _deploy_client_config(cfg: dict) -> int:
+    """Deploy a Client by writing its local INI configuration file."""
+    client_dir = _get_user_home() / ".capown" / "client"
+    client_dir.mkdir(parents=True, exist_ok=True)
+    config_path = client_dir / "config.ini"
+
+    with config_path.open("w", encoding="utf-8") as f:
+        f.write("[client]\n")
+        f.write(f'master_url = {cfg["master_url"]}\n')
+        f.write(f'client_token = {cfg["client_token"]}\n')
+        f.write("timeout = 120\n")
+
+    print(f"Client config written to {config_path}")
+    print()
+    print("Client configuration complete.")
+    print(f"  Master URL:       {cfg['master_url']}")
+    print(f"  Client token:     {_mask_token(cfg['client_token'])}")
+    print(f"  Config location:  {config_path}")
+    print()
+    print("To use this config, set:")
+    print(f'  export CAPOWN_CLIENT_CONFIG={config_path}')
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# enrollment config generation
+# ---------------------------------------------------------------------------
+
+def _generate_enrollment_config(args) -> int:
+    """Generate a role-specific enrollment config file (no deployment)."""
+    role = args.generate  # "worker" or "client"
+
+    # Master URL
+    master_url = args.master_url
+    if not master_url:
+        master_url = _ask("Master URL (e.g. https://master.example.com/gb)")
+
+    # Output path
+    output = args.output
+    if not output:
+        default_name = f"capown-{role}.toml"
+        output = _ask("Output path", default_name)
+
+    output_path = Path(output).resolve()
+    if output_path.exists():
+        if not _ask_yn(f"Overwrite {output_path}?", default_yes=False):
+            print("Cancelled.")
+            return 0
+
+    if role == "worker":
+        node_id = args.node_id
+        if not node_id:
+            node_id = _ask("Node ID", platform.node() or "worker-1")
+        node_token = _generate_token()
+
+        # Show preview
+        print()
+        print("--- Generated Worker Enrollment Config ---")
+        print(f"  Role:               Worker")
+        print(f"  Master URL:         {master_url}")
+        print(f"  Node ID:            {node_id}")
+        print(f"  Node token:         {_mask_token(node_token)}")
+        print(f"  Execution mode:     container")
+        print(f"  Workspace preset:   user_home")
+        print(f"  Container workspace: /workspace")
+        print(f"  Output:             {output_path}")
+        print()
+
+    elif role == "client":
+        client_token = _generate_token()
+
+        # Show preview
+        print()
+        print("--- Generated Client Enrollment Config ---")
+        print(f"  Role:               Client")
+        print(f"  Master URL:         {master_url}")
+        print(f"  Client token:       {_mask_token(client_token)}")
+        print(f"  Output:             {output_path}")
+        print()
+
+    if not _ask_yn("Save config?"):
+        print("Cancelled.")
+        return 0
+
+    # Write the TOML file (top-level keys + sections)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        if role == "worker":
+            f.write(f'role = "worker"\n')
+            f.write(f'master_url = "{master_url}"\n')
+            f.write(f'node_id = "{node_id}"\n')
+            f.write(f'node_token = "{node_token}"\n')
+            f.write("\n")
+            f.write("[worker]\n")
+            f.write('execution_mode = "container"\n')
+            f.write('workspace_preset = "user_home"\n')
+            f.write('workspace_relative = ".capown/workspace"\n')
+            f.write('container_workspace = "/workspace"\n')
+            f.write("\n")
+            f.write("[deploy]\n")
+            f.write('mirror = "default"\n')
+        else:
+            f.write(f'role = "client"\n')
+            f.write(f'master_url = "{master_url}"\n')
+            f.write(f'client_token = "{client_token}"\n')
+            f.write("\n")
+            f.write("[deploy]\n")
+            f.write('mirror = "default"\n')
+
+    print(f"Config saved to {output_path}")
+    print()
+    print("WARNING: This file contains authentication tokens.")
+    print("Store it securely and transfer it over a trusted channel.")
+    print("Delete the file after use if it is no longer needed.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# config-driven deploy flow
+# ---------------------------------------------------------------------------
+
+def _deploy_with_config(config_path: str) -> int:
+    """Run deployment driven by an enrollment config file."""
+    path = Path(config_path).resolve()
+    if not path.exists():
+        print(f"Error: config file not found: {path}")
+        return 1
+
+    try:
+        cfg = _load_enrollment_config(str(path))
+    except ValueError as e:
+        print(f"Config error: {e}")
+        return 1
+    except Exception as e:
+        print(f"Error reading config: {e}")
+        return 1
+
+    role = cfg["role"]
+
+    # Ask mirror only if not already specified in the config
+    use_cn = None
+    if cfg["mirror"]:
+        use_cn = cfg["mirror"] == "china"
+    else:
+        print()
+        use_cn = _ask_yn("Use China mirrors (tuna.tsinghua.edu.cn)?")
+
+    env = os.environ.copy()
+    env.setdefault("DOCKER_BUILDKIT", "0")
+
+    if role == "worker":
+        return _deploy_worker_from_config(cfg, use_cn, env)
+    elif role == "client":
+        return _deploy_client_config(cfg)
+    elif role == "master":
+        return _deploy_master_from_config(cfg, use_cn, env)
+
+    return 1
+
+
+def _deploy_worker_from_config(cfg: dict, use_cn: bool,
+                                env: dict[str, str]) -> int:
+    """Deploy Worker using enrollment config values."""
+    host_workspace = _resolve_host_workspace(cfg)
+    config_output_path = str(_get_user_home() / ".capown" / "worker" / "config.toml")
+
+    # Show review panel
+    print()
+    print("--- Review ---")
+    print(f"  Role:               Worker")
+    print(f"  Master URL:         {cfg['master_url']}")
+    print(f"  Node ID:            {cfg['node_id']}")
+    print(f"  Node token:         {_mask_token(cfg['node_token'])}")
+    print(f"  Execution mode:     {cfg['execution_mode']}")
+    print(f"  Host workspace:     {host_workspace}")
+    print(f"  Container workspace:{cfg['container_workspace']}")
+    print(f"  Mirror:             {'china' if use_cn else 'default'}")
+    print(f"  Config output:      {config_output_path}")
+    print()
+
+    if not _ask_yn("Save and deploy?"):
+        print("Cancelled.")
+        return 0
+
+    if not _prepare_worker_deploy():
+        return 1
+
+    if cfg["execution_mode"] == "container":
+        return _deploy_worker_container(
+            env, cfg["node_id"], cfg["master_url"], cfg["node_token"],
+            cfg["container_workspace"], host_workspace, use_cn,
+        )
+    else:
+        workspace_for_config = "/" if cfg["execution_mode"] == "host" else host_workspace
+        return _deploy_worker_host(
+            cfg["node_id"], cfg["master_url"], cfg["node_token"],
+            workspace_for_config, "120", "5", use_cn,
+        )
+
+
+def _deploy_master_from_config(cfg: dict, use_cn: bool,
+                                env: dict[str, str]) -> int:
+    """Deploy Master using enrollment config values."""
+    config_output_path = str(_get_user_home() / ".capown" / "master" / "config.toml")
+
+    # Show review panel
+    print()
+    print("--- Review ---")
+    print(f"  Role:               Master")
+    print(f"  Master URL:         {cfg['master_url']}")
+    config_path_display = _get_user_home() / ".capown" / "master" / "config.toml"
+    print(f"  Config output:      {config_path_display}")
+    print(f"  Mirror:             {'china' if use_cn else 'default'}")
+    print()
+
+    if not _ask_yn("Save and deploy?"):
+        print("Cancelled.")
+        return 0
+
+    if not _prepare_master_container_deploy():
+        return 1
+
+    # Defer to the existing interactive master deploy with pre-filled values
+    return _deploy_master(env, {
+        "bind_addr": "0.0.0.0",
+        "port": "9210",
+        "heartbeat": "60",
+        "db_path": "/app/data/registry.db",
+        "node_token": cfg.get("node_token", _generate_token()),
+        "client_token": cfg.get("client_token", _generate_token()),
+        "use_cn": use_cn,
+    })
+
+
 def _deploy_worker(env: dict[str, str], params: dict) -> int:
-    """Deploy Worker in the specified mode.
+    """Deploy Worker in the specified execution mode.
 
     ``params`` must contain:
-        mode, node_id, master_url, node_token, use_cn,
+        execution_mode, node_id, master_url, node_token, use_cn,
         container_ws, host_ws, command_timeout, reconnect_interval
     """
-    mode = params["mode"]
+    exec_mode = params.get("execution_mode", params.get("mode", "container"))
     node_id = params["node_id"]
     master_url = params["master_url"]
     node_token = params["node_token"]
@@ -780,7 +1168,7 @@ def _deploy_worker(env: dict[str, str], params: dict) -> int:
     command_timeout = params["command_timeout"]
     reconnect_interval = params["reconnect_interval"]
 
-    if mode == "container":
+    if exec_mode == "container":
         workspace_for_config = container_ws
     else:
         workspace_for_config = "/"
@@ -789,10 +1177,10 @@ def _deploy_worker(env: dict[str, str], params: dict) -> int:
 
     print()
     print("--- Review ---")
-    print(f"  Mode:             {mode}")
+    print(f"  Execution mode:   {exec_mode}")
     print(f"  Node ID:          {node_id}")
     print(f"  Master URL:       {master_url}")
-    if mode == "container":
+    if exec_mode == "container":
         print(f"  Container ws:     {container_ws}")
         print(f"  Host mount:       {host_ws}")
     else:
@@ -810,7 +1198,7 @@ def _deploy_worker(env: dict[str, str], params: dict) -> int:
     if not _prepare_worker_deploy():
         return 1
 
-    if mode == "container":
+    if exec_mode == "container":
         return _deploy_worker_container(
             env, node_id, master_url, node_token,
             container_ws, host_ws, use_cn,
@@ -829,14 +1217,14 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
     print("--- Worker Configuration ---")
     print()
 
-    # Mode selection
-    mode_idx = _ask_choice("Deployment mode:", [
-        "Container mode  -- Docker sandbox, limited filesystem access\n"
+    # Execution mode selection
+    mode_idx = _ask_choice("Task execution mode:", [
+        "Container  -- Docker execution backend, limited filesystem access\n"
         "                      Mounts a selected host directory as /workspace",
-        "Host mode       -- runs natively, full system capabilities\n"
+        "Host       -- native execution, full system capabilities\n"
         "                      Linux systemd service for trusted machines",
     ])
-    mode = "container" if mode_idx == 0 else "host"
+    exec_mode = "container" if mode_idx == 0 else "host"
 
     print()
     print("--- Identity ---")
@@ -850,8 +1238,8 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
     node_token = _ask("Node Token (must match Master's node_token)")
 
     print()
-    if mode == "container":
-        print("--- Workspace (Container Mode) ---")
+    if exec_mode == "container":
+        print("--- Workspace (Container Execution Backend) ---")
         container_ws = _ask("Container workspace path", "/workspace")
         default_host_ws = str(_get_user_home() / ".capown" / "workspace")
         host_ws = _ask("Host directory to mount", default_host_ws)
@@ -868,7 +1256,7 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
     use_cn = _ask_yn("Use China mirrors for pip?")
 
     return _deploy_worker(env, {
-        "mode": mode,
+        "execution_mode": exec_mode,
         "node_id": node_id,
         "master_url": master_url,
         "node_token": node_token,
@@ -885,6 +1273,38 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="CapOwn Deployment")
+    parser.add_argument(
+        "--config",
+        help="Path to enrollment config TOML file (skips role selection)",
+    )
+    parser.add_argument(
+        "--generate",
+        choices=["worker", "client"],
+        help="Generate an enrollment config file instead of deploying",
+    )
+    parser.add_argument(
+        "--master-url",
+        help="Master URL for generated enrollment config",
+    )
+    parser.add_argument(
+        "--node-id",
+        help="Node ID for generated worker enrollment config",
+    )
+    parser.add_argument(
+        "--output",
+        help="Output path for generated enrollment config",
+    )
+    args = parser.parse_args()
+
+    # Config generation mode
+    if args.generate:
+        return _generate_enrollment_config(args)
+
+    # Config-driven deploy: skip interactive role selection
+    if args.config:
+        return _deploy_with_config(args.config)
+
     print("=================================")
     print("    CapOwn Deployment")
     print("=================================")

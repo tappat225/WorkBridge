@@ -100,7 +100,8 @@ class MasterConfig:
 
 @dataclass
 class WorkerConfig:
-    mode: str = "container"   # "host" | "container"
+    mode: str = "container"     # DEPRECATED: use execution_mode
+    execution_mode: str = ""    # "host" | "container"; empty = use mode value
     node_id: str = ""
     master_url: str = "https://localhost:9210"
     node_token: str = ""
@@ -108,6 +109,7 @@ class WorkerConfig:
     command_timeout: int = 120
     reconnect_interval: int = 5
     max_output_size: int = 200_000
+    container_name: str = "capown-worker-exec"
 
     @classmethod
     def load(cls, path: str | os.PathLike[str] | None = None) -> "WorkerConfig":
@@ -115,8 +117,16 @@ class WorkerConfig:
         worker = data.get("worker", {})
         auth = data.get("auth", {})
 
+        # Resolve execution_mode: prefer new key, fall back to old mode key
+        raw_exec = _env("EXECUTION_MODE",
+                      worker.get("execution_mode",
+                          _env("WORKER_MODE",
+                              worker.get("mode", ""))))
+        resolved_mode = str(raw_exec) if raw_exec else "container"
+
         return cls(
-            mode=str(_env("WORKER_MODE", worker.get("mode", cls.mode))),
+            mode=resolved_mode,
+            execution_mode=resolved_mode,
             node_id=str(_env("NODE_ID", worker.get("node_id", cls.node_id))),
             master_url=str(_env("MASTER_URL", worker.get("master_url", cls.master_url))),
             node_token=str(_env("NODE_TOKEN", auth.get("node_token", cls.node_token))),
@@ -128,6 +138,9 @@ class WorkerConfig:
             reconnect_interval=_as_int(
                 _env("RECONNECT_INTERVAL", worker.get("reconnect_interval", cls.reconnect_interval)),
                 "RECONNECT_INTERVAL",
+            ),
+            container_name=str(
+                _env("CONTAINER_NAME", worker.get("container_name", cls.container_name)),
             ),
             max_output_size=_as_int(
                 _env("MAX_OUTPUT_SIZE", worker.get("max_output_size", cls.max_output_size)),

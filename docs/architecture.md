@@ -30,9 +30,11 @@ on worker machines.
 - **All-outbound connections**: Workers only need outbound HTTPS. No inbound ports required.
 - **Central routing hub**: All inter-node communication routes through Master.
 - **Capability/intelligence split**: Workers provide execution; Agents provide LLM decisions.
-- **Dual deployment modes**: Workers support container (Docker) and host (native) deployment.
-  Container mode bind-mounts a selected host directory as the worker workspace;
-  host mode runs commands directly on the host system.
+- **Dual execution backends**: Workers support container (Docker) and host (native)
+  task execution. The Worker control process always runs on the host. In container
+  mode, tasks execute inside a managed Docker container that bind-mounts a selected
+  host directory as the workspace; host mode executes tasks directly on the host
+  system.
 
 ## Components
 
@@ -72,7 +74,12 @@ CapOwn/
 │   │   ├── shell.py                #   Shell command executor
 │   │   ├── file.py                 #   File read/write/list executor
 │   │   └── system_info.py          #   System info executor (no shell)
-│   ├── Dockerfile
+│   ├── execution/                  #   Execution backend abstraction
+│   │   ├── base.py                 #   Backend ABC with shared path resolution
+│   │   ├── host.py                 #   Host-native execution backend
+│   │   └── docker.py               #   Docker container execution backend
+│   ├── execution.Dockerfile        #   Managed execution container image
+│   ├── Dockerfile                  #   (Legacy worker image)
 │   ├── docker-compose.yml
 │   ├── requirements.txt
 │   └── config.toml.example

@@ -1,7 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [worker]
-mode = "container"            # "host" | "container" deployment mode
+# Execution mode: "host" or "container"
+#   host      - tasks execute directly on the host system
+#   container - tasks execute inside a managed Docker execution container
+execution_mode = "container"
+# DEPRECATED: use execution_mode instead
+# mode = "container"
+
 node_id = "<unique-node-id>"
 master_url = "https://<master-domain>:9210"
 workspace = "/workspace"      # container: path inside container; host: "/" (full filesystem)

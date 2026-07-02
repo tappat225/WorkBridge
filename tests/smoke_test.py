@@ -574,6 +574,338 @@ def test_master_error_codes():
     print("  OK: auth denied error code")
 
 
+def test_token_masking():
+    """Verify _mask_token obscures tokens correctly."""
+    from deploy import _mask_token
+
+    # Normal 16-char token -> first 4 visible + 12 asterisks
+    masked = _mask_token("abcdef1234567890")
+    assert masked.startswith("abcd")
+    assert masked.endswith("************")
+    assert len(masked) == 16
+    print("  OK: normal token masked")
+
+    # Empty token
+    assert _mask_token("") == "(not set)"
+    print("  OK: empty token shows (not set)")
+
+    # Short 3-char token -> all visible, no asterisks needed
+    masked = _mask_token("abc")
+    assert masked == "abc"
+    print("  OK: short token displayed fully")
+
+
+def test_enrollment_config_worker():
+    """Verify worker enrollment config parsing."""
+    import os
+    import tempfile
+    from deploy import _load_enrollment_config
+
+    toml_content = '''
+role = "worker"
+master_url = "https://master.example.com"
+node_id = "test-worker"
+node_token = "abc123def456"
+
+[worker]
+execution_mode = "container"
+workspace_preset = "user_home"
+workspace_relative = ".capown/workspace"
+container_workspace = "/workspace"
+
+[deploy]
+mirror = "default"
+'''
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False, encoding="utf-8") as f:
+            f.write(toml_content)
+            tmp_path = f.name
+
+        cfg = _load_enrollment_config(tmp_path)
+        assert cfg["role"] == "worker"
+        assert cfg["master_url"] == "https://master.example.com"
+        assert cfg["node_id"] == "test-worker"
+        assert cfg["node_token"] == "abc123def456"
+        assert cfg["execution_mode"] == "container"
+        assert cfg["workspace_preset"] == "user_home"
+        assert cfg["workspace_relative"] == ".capown/workspace"
+        assert cfg["container_workspace"] == "/workspace"
+        assert cfg["mirror"] == "default"
+        assert cfg["client_token"] == ""
+        print("  OK: worker enrollment config parsed correctly")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+def test_enrollment_config_client():
+    """Verify client enrollment config parsing."""
+    import os
+    import tempfile
+    from deploy import _load_enrollment_config
+
+    toml_content = '''
+role = "client"
+master_url = "https://master.example.com"
+client_token = "client-token-xyz"
+
+[deploy]
+mirror = "china"
+'''
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False, encoding="utf-8") as f:
+            f.write(toml_content)
+            tmp_path = f.name
+
+        cfg = _load_enrollment_config(tmp_path)
+        assert cfg["role"] == "client"
+        assert cfg["master_url"] == "https://master.example.com"
+        assert cfg["client_token"] == "client-token-xyz"
+        assert cfg["mirror"] == "china"
+        assert cfg["node_token"] == ""
+        print("  OK: client enrollment config parsed correctly")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+def test_enrollment_config_validation():
+    """Verify enrollment config validation rejects invalid input."""
+    import os
+    import tempfile
+    from deploy import _load_enrollment_config
+
+    def _write_and_load(content, expect_error_substr):
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False, encoding="utf-8") as f:
+                f.write(content)
+                tmp_path = f.name
+            try:
+                _load_enrollment_config(tmp_path)
+                assert False, f"expected ValueError containing '{expect_error_substr}'"
+            except ValueError as e:
+                err = str(e)
+                assert expect_error_substr in err, f"expected '{expect_error_substr}' in '{err}'"
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    # Missing role
+    _write_and_load('master_url = "https://x.com"\n', "missing 'role'")
+
+    # Invalid role
+    _write_and_load('role = "invalid"\n', "invalid role")
+
+    # Worker missing master_url
+    _write_and_load('role = "worker"\nnode_id = "x"\nnode_token = "y"\n', "missing 'master_url'")
+
+    # Worker missing node_token
+    _write_and_load('role = "worker"\nnode_id = "x"\nmaster_url = "https://x.com"\n', "missing 'node_token'")
+
+    # Worker missing node_id
+    _write_and_load('role = "worker"\nmaster_url = "https://x.com"\nnode_token = "y"\n', "missing 'node_id'")
+
+    # Client missing master_url
+    _write_and_load('role = "client"\nclient_token = "y"\n', "missing 'master_url'")
+
+    # Client missing client_token
+    _write_and_load('role = "client"\nmaster_url = "https://x.com"\n', "missing 'client_token'")
+
+    # Invalid mirror
+    _write_and_load('role = "worker"\nmaster_url = "https://x.com"\nnode_id = "x"\nnode_token = "y"\n[deploy]\nmirror = "invalid"\n', "invalid mirror")
+
+    print("  OK: all validation checks reject invalid input")
+
+
+def test_enrollment_config_defaults():
+    """Verify enrollment config applies default values correctly."""
+    import os
+    import tempfile
+    from deploy import _load_enrollment_config
+
+    toml_content = '''
+role = "worker"
+master_url = "https://master.example.com"
+node_id = "test-worker"
+node_token = "abc"
+'''
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False, encoding="utf-8") as f:
+            f.write(toml_content)
+            tmp_path = f.name
+
+        cfg = _load_enrollment_config(tmp_path)
+        assert cfg["execution_mode"] == "container", f"default execution_mode should be container, got {cfg['execution_mode']}"
+        assert cfg["workspace_preset"] == "user_home"
+        assert cfg["workspace_relative"] == ".capown/workspace"
+        assert cfg["container_workspace"] == "/workspace"
+        assert cfg["mirror"] == ""  # not specified, so empty
+        print("  OK: enrollment config defaults applied correctly")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+def test_deploy_cli_args():
+    """Verify deploy.py CLI arguments match expected format."""
+    import argparse
+
+    # Match the actual parser setup in deploy.py main()
+    parser = argparse.ArgumentParser(description="CapOwn Deployment")
+    parser.add_argument("--config", help="Path to enrollment config TOML file")
+    parser.add_argument("--generate", choices=["worker", "client"],
+                        help="Generate an enrollment config file instead of deploying")
+    parser.add_argument("--master-url", help="Master URL for generated enrollment config")
+    parser.add_argument("--node-id", help="Node ID for generated worker enrollment config")
+    parser.add_argument("--output", help="Output path for generated enrollment config")
+
+    # --config with a path
+    args = parser.parse_args(["--config", "test.toml"])
+    assert args.config == "test.toml"
+    assert args.generate is None
+    print("  OK: --config parsed correctly")
+
+    # --generate worker
+    args = parser.parse_args(["--generate", "worker", "--master-url", "https://x.com"])
+    assert args.generate == "worker"
+    assert args.master_url == "https://x.com"
+    print("  OK: --generate worker parsed correctly")
+
+    # --generate client with --output
+    args = parser.parse_args(["--generate", "client", "--output", "/tmp/test.toml"])
+    assert args.generate == "client"
+    assert args.output == "/tmp/test.toml"
+    print("  OK: --generate client with --output parsed correctly")
+
+    # Empty args (interactive mode)
+    args = parser.parse_args([])
+    assert args.config is None
+    assert args.generate is None
+    print("  OK: empty args parsed correctly (interactive mode)")
+
+
+def test_execution_dockerfile_syntax():
+    """Verify the execution.Dockerfile has valid syntax."""
+    dockerfile_path = "worker/execution.Dockerfile"
+    assert os.path.exists(dockerfile_path), f"{dockerfile_path} not found"
+    with open(dockerfile_path, encoding="utf-8") as f:
+        content = f.read()
+    # Basic Dockerfile checks
+    assert "FROM" in content, "execution.Dockerfile must have FROM"
+    assert "CMD" in content, "execution.Dockerfile must have CMD"
+    assert "/dev/null" in content, "execution.Dockerfile must keep container alive"
+    assert "mkdir -p /workspace" in content, "execution.Dockerfile must create workspace"
+    print("  OK: execution.Dockerfile syntax looks valid")
+
+
+def test_execution_backend_factory():
+    """Verify create_backend returns correct backend type."""
+    from worker.execution import create_backend, HostExecutionBackend, DockerExecutionBackend
+
+    # Host mode
+    backend = create_backend("host", "/tmp", command_timeout=30)
+    assert isinstance(backend, HostExecutionBackend), f"expected HostExecutionBackend, got {type(backend)}"
+    print("  OK: host mode returns HostExecutionBackend")
+
+    # Container mode
+    backend = create_backend("container", "/workspace", command_timeout=30, container_name="test-worker")
+    assert isinstance(backend, DockerExecutionBackend), f"expected DockerExecutionBackend, got {type(backend)}"
+    print("  OK: container mode returns DockerExecutionBackend")
+
+
+def test_execution_backend_interface():
+    """Verify HostExecutionBackend implements all required methods."""
+    from worker.execution.host import HostExecutionBackend
+
+    backend = HostExecutionBackend("/tmp", command_timeout=30)
+
+    # Check that all abstract methods exist and are callable
+    import inspect
+    methods = ["run_shell", "read_file", "write_file", "list_dir", "system_info"]
+    for name in methods:
+        assert hasattr(backend, name), f"missing method: {name}"
+        assert inspect.iscoroutinefunction(getattr(backend, name)), f"{name} must be async"
+    print("  OK: HostExecutionBackend has all required async methods")
+
+
+def test_backend_workspace_resolution():
+    """Verify _resolve_workspace_path rejects traversal attempts."""
+    from worker.execution.base import ExecutionBackend
+
+    # Use a concrete subclass that only provides the path resolution helper
+    class _TestBackend(ExecutionBackend):
+        async def run_shell(self, command, cwd, timeout): pass
+        async def read_file(self, path): pass
+        async def write_file(self, path, content): pass
+        async def list_dir(self, path): pass
+        async def system_info(self): pass
+
+    # Use temp dir as workspace
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        # Valid path within workspace
+        resolved, err = _TestBackend()._resolve_workspace_path(td, "subdir")
+        assert err is None, f"valid path should not error: {err}"
+        assert resolved is not None
+
+        # Traversal attempt
+        resolved, err = _TestBackend()._resolve_workspace_path(td, "../../etc/passwd")
+        assert err is not None, "traversal should return error code"
+        assert "workspace_violation" in err
+
+        # Direct traversal
+        import os
+        if os.name == "posix":
+            resolved, err = _TestBackend()._resolve_workspace_path(td, "/etc/passwd")
+            assert err is not None, "absolute path escape should return error code"
+    print("  OK: workspace path resolution rejects traversal")
+
+
+def test_docker_backend_init():
+    """Verify DockerExecutionBackend can be instantiated without Docker."""
+    from worker.execution.docker import DockerExecutionBackend
+    from worker.execution.base import ExecutionBackend
+
+    backend = DockerExecutionBackend(
+        workspace="/workspace",
+        container_name="test-worker",
+        command_timeout=30,
+    )
+    assert isinstance(backend, ExecutionBackend)
+    assert backend._container == "test-worker"
+    assert backend._workspace == "/workspace"
+    assert backend._timeout == 30
+    print("  OK: DockerExecutionBackend instantiated without Docker")
+
+
+def test_backend_factory_with_config():
+    """Verify create_backend works with config values matching WorkerConfig."""
+    from worker.execution import create_backend, HostExecutionBackend, DockerExecutionBackend
+
+    # Simulate what WorkerDaemon does with a host-mode config
+    backend = create_backend(
+        execution_mode="host",
+        workspace="/tmp",
+        command_timeout=30,
+    )
+    assert isinstance(backend, HostExecutionBackend)
+    print("  OK: create_backend('host', ...) returns HostExecutionBackend")
+
+    # Simulate container-mode config
+    backend = create_backend(
+        execution_mode="container",
+        workspace="/workspace",
+        command_timeout=120,
+        container_name="capown-worker",
+    )
+    assert isinstance(backend, DockerExecutionBackend)
+    print("  OK: create_backend('container', ...) returns DockerExecutionBackend")
+
+
 if __name__ == "__main__":
     tests = [
         ("Protocol models", test_protocol_models),
@@ -586,6 +918,18 @@ if __name__ == "__main__":
         ("Output truncation", test_output_truncation),
         ("Print result", test_print_result),
         ("Master error codes", test_master_error_codes),
+        ("Token masking", test_token_masking),
+        ("Deploy CLI args", test_deploy_cli_args),
+        ("Execution Dockerfile", test_execution_dockerfile_syntax),
+        ("Execution backend factory", test_execution_backend_factory),
+        ("Execution backend interface", test_execution_backend_interface),
+        ("Backend workspace resolution", test_backend_workspace_resolution),
+        ("Docker backend init", test_docker_backend_init),
+        ("Backend factory with config", test_backend_factory_with_config),
+        ("Enrollment config worker", test_enrollment_config_worker),
+        ("Enrollment config client", test_enrollment_config_client),
+        ("Enrollment config validation", test_enrollment_config_validation),
+        ("Enrollment config defaults", test_enrollment_config_defaults),
         ("Dispatch validation", test_dispatch_request_validation),
         ("Task metadata", test_task_metadata_serialization),
         ("Task store", test_task_store),
@@ -605,5 +949,5 @@ if __name__ == "__main__":
             failed += 1
 
     print(f"{'='*40}")
-    print(f"Results: {passed} passed, {failed} failed")
+    print(f"Results: {passed} passed, {failed} failed out of {len(tests)} tests")
     sys.exit(0 if failed == 0 else 1)

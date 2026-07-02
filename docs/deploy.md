@@ -2,7 +2,21 @@
 
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-> **Tip:** The interactive deploy script (`python3 deploy.py`) is the recommended way to deploy. This guide covers manual setup for advanced use cases.
+> **Tip:** The interactive deploy script (`python3 deploy.py`) is the recommended
+> way to deploy. It also supports config-driven and config generation modes:
+>
+> ```bash
+> # Standard interactive deployment
+> python3 deploy.py
+>
+> # Generate a Worker enrollment config
+> python3 deploy.py --generate worker --master-url https://master.example.com
+>
+> # Deploy from an enrollment config (skips role selection)
+> python3 deploy.py --config capown-worker.toml
+> ```
+>
+> This guide covers manual setup for advanced use cases.
 
 ## Prerequisites
 
@@ -71,7 +85,15 @@ curl http://127.0.0.1:9210/health
 
 ## Worker Deployment
 
-### Container Mode
+The Worker control process always runs on the host as a native OS service.
+When using the container execution backend, a managed Docker container is
+additionally set up for task isolation. The `deploy.py` script handles both
+steps automatically.
+
+### Host Execution Backend
+
+Tasks run directly on the host system. Suitable for trusted machines where
+Docker is not needed.
 
 #### 1. Write Config File
 
@@ -79,50 +101,7 @@ Create `~/.capown/worker/config.toml`:
 
 ```toml
 [worker]
-mode = "container"
-node_id = "<unique-node-name>"
-master_url = "https://your-server.com/gb"
-workspace = "/workspace"
-command_timeout = "120"
-reconnect_interval = "5"
-
-[auth]
-node_token = "<master-node-token>"
-```
-
-#### 2. Prepare Workspace
-
-```bash
-mkdir -p ~/.capown/workspace
-```
-
-#### 3. Build and Run
-
-```bash
-cd worker/
-
-# Build
-DOCKER_BUILDKIT=0 docker compose build
-
-# Start
-CAPOWN_HOST_WORKSPACE="$HOME/.capown/workspace" \
-  CAPOWN_CONTAINER_WORKSPACE="/workspace" \
-  CAPOWN_WORKER_CONFIG="$HOME/.capown/worker/config.toml" \
-  docker compose up -d
-
-# Check logs
-docker compose logs worker
-```
-
-### Host Mode (Linux)
-
-#### 1. Write Config File
-
-Create `~/.capown/worker/config.toml`:
-
-```toml
-[worker]
-mode = "host"
+execution_mode = "host"
 node_id = "<unique-node-name>"
 master_url = "https://your-server.com/gb"
 workspace = "/"
@@ -181,7 +160,7 @@ systemctl --user enable --now capown-worker
 sudo loginctl enable-linger $USER
 ```
 
-### Host Mode (Windows)
+### Host Execution Backend (Windows)
 
 #### 1. Write Config File
 
@@ -228,7 +207,7 @@ When Master and Worker run on the same host, configure the Worker to connect via
 ```toml
 # worker/config.toml
 [worker]
-mode = "container"  # or "host"
+execution_mode = "container"  # or "host"
 node_id = "local-worker"
 master_url = "http://127.0.0.1:9210"
 # ...

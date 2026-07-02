@@ -29,7 +29,7 @@ The Master container reads `/etc/capown/master.toml` at runtime. The Compose fil
 
 | TOML key | Env override | Default | Description |
 |---|---|---|---|
-| `worker.mode` | `WORKER_MODE` | `container` | Deployment mode: `"host"` or `"container"` |
+| `worker.execution_mode` | `EXECUTION_MODE` | `container` | Task execution backend: `"host"` or `"container"`. Falls back to legacy `mode` / `WORKER_MODE` if not set. |
 | `worker.node_id` | `NODE_ID` | (required) | Unique identifier for this worker |
 | `worker.master_url` | `MASTER_URL` | `https://localhost:9210` | Master endpoint URL |
 | `auth.node_token` | `NODE_TOKEN` | (required) | Authentication token (must match Master) |
@@ -41,13 +41,20 @@ The Master container reads `/etc/capown/master.toml` at runtime. The Compose fil
 Config file locations (resolved in order of priority):
 
 1. `$CAPOWN_CONFIG` environment variable
-2. `~/.capown/worker/config.toml` (host mode default)
-3. `/etc/capown/worker.toml` (container mode default)
+2. `~/.capown/worker/config.toml` (host execution backend default)
+3. `/etc/capown/worker.toml` (container execution backend default)
 4. `worker/config.toml` (dev mode fallback)
 
-The Worker container reads `/etc/capown/worker.toml`; the provided Compose file mounts the config from `~/.capown/worker/config.toml` when deployed through the root deploy script. In container mode, the host workspace selected during deployment is mounted into the container at `worker.workspace`. For example, to expose `/home/ubuntu/repo` to tasks, keep `worker.workspace = "/workspace"` and enter `/home/ubuntu/repo` when the deploy script asks for the host directory to mount.
+The Worker control process always runs on the host as a native OS service,
+regardless of execution mode. In container execution backend mode (`execution_mode
+= "container"`), the deploy script additionally sets up a managed Docker execution
+container. The worker daemon uses `docker exec` internally to run tasks inside
+that container. In host execution backend mode (`execution_mode = "host"`), tasks
+run directly on the host.
 
-Host mode installs a stable application copy under `~/.capown/worker/app` and runs it through `~/.capown/worker/venv`. This keeps the deployed worker independent from the source checkout path after deployment.
+The deploy script installs a stable application copy under `~/.capown/worker/app`
+and runs it through `~/.capown/worker/venv`. This keeps the deployed worker
+independent from the source checkout path after deployment.
 
 ### Client (`client/config.ini`)
 
@@ -60,6 +67,89 @@ The client uses INI so it can run on older Python versions without installing ex
 | `client.timeout` | `CLIENT_TIMEOUT` | `120` | Synchronous task timeout in seconds |
 
 The client intentionally has no default node. Run `nodes` and pass `<node-id>` on every worker operation.
+
+### Client Config Discovery
+
+The client automatically searches for its config in the following order:
+
+1. `$CAPOWN_CLIENT_CONFIG` environment variable
+2. `client/config.ini` (alongside the script)
+3. `./client/config.ini` (current working directory)
+4. `~/.config/capown/client.ini`
+5. `~/.capown/client/config.ini` (written by `deploy.py --generate client`)
+
+## Config-Driven Deployment
+
+CapOwn supports non-interactive deployment via enrollment config files. The
+Master operator can generate role-specific configs, then hand them to target
+machine operators.
+
+### Generate an Enrollment Config
+
+On the Master machine (or any trusted machine):
+
+```bash
+# Generate a Worker enrollment config
+python3 deploy.py --generate worker --master-url https://master.example.com
+
+# Generate a Client enrollment config
+python3 deploy.py --generate client --master-url https://master.example.com
+```
+
+The command prompts for additional fields (Node ID, output path) unless
+provided via `--node-id` and `--output`. Tokens are generated automatically
+and masked in the preview. The generated file contains top-level keys and
+role-specific sections in TOML format.
+
+### Deploy from an Enrollment Config
+
+On the target machine, transfer the generated config file and run:
+
+```bash
+# Deploy Worker from config (skips role selection)
+python3 deploy.py --config capown-worker.toml
+
+# Deploy Client from config
+python3 deploy.py --config capown-client.toml
+```
+
+The deploy script:
+1. Reads the `role` field from the config.
+2. Skips the interactive role selection step.
+3. Asks for mirror selection only if not specified in the config.
+4. Resolves local defaults (e.g., `workspace_preset = "user_home"` resolves
+   to `$HOME/.capown/workspace`).
+5. Shows a complete parameter review panel.
+6. Proceeds only after explicit user confirmation.
+
+### Enrollment Config Format
+
+Worker:
+```toml
+role = "worker"
+master_url = "https://master.example.com"
+node_id = "worker-example"
+node_token = "<your-node-token>"
+
+[worker]
+execution_mode = "container"
+workspace_preset = "user_home"
+workspace_relative = ".capown/workspace"
+container_workspace = "/workspace"
+
+[deploy]
+mirror = "default"  # "default" or "china"
+```
+
+Client:
+```toml
+role = "client"
+master_url = "https://master.example.com"
+client_token = "<your-client-token>"
+
+[deploy]
+mirror = "default"  # "default" or "china"
+```
 
 ## CLI Usage
 

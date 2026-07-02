@@ -11,9 +11,7 @@ import httpx
 from shared.config import WorkerConfig, load_worker_config
 from shared.protocol import Capability, ErrorCode, TaskResult, TaskStatus, TaskType
 from .executor.base import ExecResult
-from .executor.shell import ShellExecutor
-from .executor.file import FileExecutor
-from .executor.system_info import SystemInfoExecutor
+from .execution import create_backend
 from .reporter import Reporter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -23,10 +21,14 @@ logger = logging.getLogger(__name__)
 class WorkerDaemon:
     def __init__(self, config: WorkerConfig = None):
         self._config = config or load_worker_config()
-        self._mode = self._config.mode
-        self._shell = ShellExecutor(self._config.workspace, self._config.command_timeout)
-        self._file = FileExecutor(self._config.workspace)
-        self._system_info = SystemInfoExecutor()
+        # Prefer execution_mode, fall back to mode for backward compat
+        self._mode = self._config.execution_mode or self._config.mode
+        self._backend = create_backend(
+            execution_mode=self._mode,
+            workspace=self._config.workspace,
+            command_timeout=self._config.command_timeout,
+            container_name=self._config.container_name,
+        )
         self._reporter = Reporter(self._config.master_url, self._config.node_token)
         self._running = False
         self._max_output = self._config.max_output_size
@@ -71,20 +73,24 @@ class WorkerDaemon:
         logger.info("worker: executing task %s (%s)", task_id, task_type)
 
         if task_type in (TaskType.shell, "shell"):
-            result = await self._shell.execute(params)
+            result = await self._backend.run_shell(
+                command=params.get("command", ""),
+                cwd=params.get("cwd"),
+                timeout=params.get("timeout", self._config.command_timeout),
+            )
             result = self._truncate(result)
         elif task_type in (TaskType.system_info, "system_info"):
-            result = await self._system_info.execute(params)
+            result = await self._backend.system_info()
         elif task_type in (TaskType.file_read, "file_read"):
-            params["action"] = "read"
-            result = await self._file.execute(params)
+            result = await self._backend.read_file(params.get("path", ""))
             result = self._truncate(result)
         elif task_type in (TaskType.file_write, "file_write"):
-            params["action"] = "write"
-            result = await self._file.execute(params)
+            result = await self._backend.write_file(
+                params.get("path", ""),
+                params.get("content", ""),
+            )
         elif task_type in (TaskType.list_dir, "list_dir"):
-            params["action"] = "list"
-            result = await self._file.execute(params)
+            result = await self._backend.list_dir(params.get("path", "."))
             result = self._truncate(result)
         else:
             result = ExecResult(
@@ -141,8 +147,8 @@ class WorkerDaemon:
         self._running = True
         logger.info("worker: starting daemon (mode=%s, node_id=%s)", self._mode, self._config.node_id)
 
-        if self._mode == "host":
-            logger.info("worker: host mode active - commands run on the host system")
+        backend_name = type(self._backend).__name__
+        logger.info("worker: using %s (execution_mode=%s)", backend_name, self._mode)
         self._register()
 
         while self._running:

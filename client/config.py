@@ -27,6 +27,7 @@ def _candidate_paths():
     yield Path(__file__).with_name("config.ini")
     yield Path.cwd() / "client" / "config.ini"
     yield Path.home() / ".config" / "capown" / "client.ini"
+    yield Path.home() / ".capown" / "client" / "config.ini"
 
 
 def _read_ini(path):

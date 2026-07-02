@@ -51,8 +51,11 @@ CapOwn focuses on a narrow first job:
   and poll task metadata.
 - **Minimal task persistence**: Master stores routing/status metadata, not raw
   commands, file contents, or full stdout/stderr.
-- **Container or host Worker mode**: use Docker isolation or trusted native host
-  execution.
+- **Container or host execution backends**: use Docker isolation or trusted native host
+  execution. The Worker control process always runs on the host.
+- **Config-driven deployment**: use `deploy.py --config <file>` to deploy with a
+  pre-filled role and parameters, or `deploy.py --generate <role>` to create
+  enrollment configs for new workers and clients.
 
 ## Quick Start
 
@@ -64,7 +67,17 @@ cd CapOwn
 python3 deploy.py
 ```
 
-Then configure the client from `client/config.ini.example`.
+For non-interactive or repeatable setups, use a config file or generate one:
+
+```bash
+# Generate a Worker enrollment config
+python3 deploy.py --generate worker --master-url https://master.example.com
+
+# Deploy with the generated config
+python3 deploy.py --config capown-worker.toml
+```
+
+Then configure the client from `client/config.ini.example` or use `--generate client`.
 
 The CapOwn client is designed for **AI Agents**. After configuration, direct your
 AI Agent to read [client/SKILL.md](client/SKILL.md) — the agent uses the `capown`
@@ -94,9 +107,9 @@ CapOwn Master
     |
     | SSE task events over outbound Worker connection
     v
-CapOwn Worker
+CapOwn Worker (host-resident control process)
     |
-    | local execution
+    | local execution (host backend) or docker exec (container backend)
     v
 Target device workspace
 ```
@@ -140,9 +153,10 @@ CapOwn is a remote execution tool for machines you control.
 
 - Node and client APIs use separate bearer tokens.
 - Worker filesystem operations are resolved against a configured workspace.
-- Container mode relies on Docker namespace boundaries.
-- Host mode runs commands on the host and should be used only on trusted
-  machines.
+- Container execution backend uses Docker namespace boundaries for task
+  isolation; the Worker control process runs on the host regardless.
+- Host execution backend runs commands on the host and should be used only
+  on trusted machines.
 - The open-source Master persists only task metadata by default.
 
 See [docs/user_guide.md](docs/user_guide.md#data-retention) for data retention

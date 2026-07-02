@@ -280,3 +280,84 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
 - Proprietary or commercial components must not copy implementation code from
   the AGPL-licensed `master/` tree unless the maintainer has intentionally
   handled the AGPL licensing implications.
+
+### 19. Config-Driven Deploy
+
+`deploy.py --config <path>` loads an enrollment config TOML file to skip
+interactive role selection and pre-fill deployment parameters.
+
+- `role` is required and must be `master`, `worker`, or `client`.
+- Worker config requires `master_url`, `node_token`, and `node_id`.
+- Client config requires `master_url` and `client_token`.
+- Mirror selection is only asked when not present in config.
+- A full parameter review panel is shown before deployment.
+- Existing `python deploy.py` (no `--config`) is unchanged.
+
+### 20. Worker Execution Mode Naming
+
+The Worker differentiates between the **control process location** (always
+host-resident) and the **task execution backend** (`host` or `container`).
+
+- Config key: `worker.execution_mode` (primary), falls back to legacy `mode`.
+- Environment variable: `EXECUTION_MODE` (primary), falls back to `WORKER_MODE`.
+- The protocol registration field is still named `mode` for backward
+  compatibility.
+- Old configs with `mode = "host"` or `mode = "container"` continue to work.
+
+### 21. Execution Backend Abstraction
+
+The Worker uses a pluggable execution backend to decouple task execution from
+the deployment model. The backend is selected at startup by `execution_mode`.
+
+| Backend | Class | File | Description |
+|---|---|---|---|
+| Host | `HostExecutionBackend` | `worker/execution/host.py` | Tasks run natively on the host |
+| Docker | `DockerExecutionBackend` | `worker/execution/docker.py` | Tasks run via `docker exec` |
+
+- Backend interface: `run_shell`, `read_file`, `write_file`, `list_dir`, `system_info`.
+- Factory entry: `worker/execution/__init__.py:create_backend()`.
+- The worker daemon creates the backend at startup and delegates all
+  `_handle_task` calls to it.
+- Workspace boundary enforcement is shared through
+  `ExecutionBackend._resolve_workspace_path()`.
+- Output truncation remains centralized in the daemon's `_truncate()`.
+- `WorkerDaemon._handle_task()` routes through the backend regardless of
+  execution mode.
+
+### 22. Worker Deployment Model
+
+The Worker control process always runs on the host as a native OS service.
+Docker is used only as the task execution backend when
+`execution_mode = "container"`.
+
+- `_deploy_worker_host()` deploys a host-resident Worker service (Linux
+  systemd or Windows scheduled task).
+- `_deploy_worker_container()` deploys a host-resident Worker service PLUS
+  a managed Docker execution container.
+- The managed execution container (`capown-worker-exec`) is built from
+  `worker/execution.Dockerfile` and stays alive with `tail -f /dev/null`.
+- Default execution mode is `container`.
+- Default host workspace is `$HOME/.capown/workspace`.
+- Default container workspace is `/workspace`.
+- Managed execution container mounts host workspace at container workspace.
+
+### 23. Config Generation
+
+`deploy.py --generate <role>` creates a role-specific enrollment config file
+without performing deployment.
+
+```bash
+# Generate a Worker enrollment config
+python deploy.py --generate worker --master-url https://master.example.com
+
+# Generate a Client enrollment config
+python deploy.py --generate client --master-url https://master.example.com
+```
+
+- `--generate worker` prompts for Node ID (or `--node-id`) and generates a
+  node token, execution mode and workspace defaults.
+- `--generate client` prompts for client token generation.
+- `--master-url` and `--node-id` can be passed as CLI arguments to skip prompts.
+- Generated configs never include local machine paths (uses `workspace_preset`).
+- Tokens are masked in preview output.
+- Generated configs contain authentication tokens; store and transfer securely.
