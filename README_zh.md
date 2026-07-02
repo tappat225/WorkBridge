@@ -6,7 +6,10 @@
 
 ----
 
-多主机远程操作与 AI Agent 协调系统。
+<p align="center">
+[ <a href="README.md">En</a> | <b>中</b> ]
+<b>多主机远程操作与 AI Agent 协调系统。</b>
+</p>
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only%20%2F%20Apache--2.0-blue)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.9-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -19,7 +22,7 @@ IP，也不需要开放入站端口。
 
 **一个 Agent。多台设备。无需入站端口。最小信任中继。**
 
-[English](README.md) | [用户指南](docs/user_guide.md) | [部署指南](docs/deploy.md) | [贡献说明](CONTRIBUTING.md)
+[用户指南](docs/user_guide.md) | [部署指南](docs/deploy.md) | [贡献说明](CONTRIBUTING.md)
 
 ## 为什么需要 CapOwn
 

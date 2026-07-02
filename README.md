@@ -6,7 +6,10 @@
 
 ----
 
-Multi-host remote operation and AI Agent coordination.
+<p align="center">
+[ <b>En</b> | <a href="README_zh.md">中</a> ]
+<b>Multi-host remote operation and AI Agent coordination.</b>
+</p>
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only%20%2F%20Apache--2.0-blue)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.9-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -19,7 +22,7 @@ NAT do not need public IPs or inbound ports.
 
 **One Agent. Many devices. No inbound ports. Minimal-trust relay.**
 
-[中文](README_zh.md) | [User guide](docs/user_guide.md) | [Deployment guide](docs/deploy.md) | [Contributing](CONTRIBUTING.md)
+[User guide](docs/user_guide.md) | [Deployment guide](docs/deploy.md) | [Contributing](CONTRIBUTING.md)
 
 ## Why CapOwn
 
