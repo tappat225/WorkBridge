@@ -124,6 +124,30 @@ class TaskPayload(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
+class DispatchRequest(BaseModel):
+    """Validated request body for /api/tasks/dispatch and dispatch_sync."""
+    target_node: str = Field(..., min_length=1, description="Target worker node ID")
+    payload: TaskPayload
+    timeout: int = Field(default=120, ge=1, le=3600, description="Task timeout in seconds")
+
+
+class TaskMetadata(BaseModel):
+    """Minimal task metadata stored in Master (no payload/result body).
+
+    This is what gets persisted to SQLite — sensitive content like
+    command text, file content, and full stdout/stderr are NOT stored.
+    """
+    task_id: str
+    target_node: str
+    capability: str = ""
+    status: str = "pending"
+    created_at: str = ""
+    updated_at: str = ""
+    error_code: str | None = None
+    payload_size: int = 0
+    result_size: int = 0
+
+
 class Task(BaseModel):
     task_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     target_node: str

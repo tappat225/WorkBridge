@@ -67,7 +67,7 @@ The client intentionally has no default node. Run `nodes` and pass `<node-id>` o
 # List registered workers
 python client/capown_client.py nodes
 
-# Run a shell command
+# Run a shell command (synchronous, waits for result)
 python client/capown_client.py run worker-1 "uname -a"
 
 # Read a file
@@ -78,6 +78,12 @@ python client/capown_client.py ls worker-1 /tmp
 
 # Get system info
 python client/capown_client.py info worker-1
+
+# Dispatch a long-running command (async, returns task_id)
+python client/capown_client.py dispatch worker-1 "sleep 30 && echo done"
+
+# Check task status by task_id
+python client/capown_client.py task <task_id>
 ```
 
 Legacy command names are also supported for backward compatibility:
@@ -117,8 +123,23 @@ curl -X POST http://127.0.0.1:9210/api/tasks/dispatch \
 | POST | `/api/tasks/dispatch` | Client Token | Dispatch task (async) |
 | POST | `/api/tasks/dispatch_sync` | Client Token | Dispatch and wait for result |
 | POST | `/api/tasks/result` | Node Token | Worker reports task result |
-| GET | `/api/tasks/{task_id}` | - | Get task result |
+| GET | `/api/tasks/{task_id}` | - | Get task metadata (add `?full=true` for result body) |
 | GET | `/health` | - | Health check |
+
+## Data Retention
+
+The Master stores only minimal task metadata in its database:
+
+**Persisted to SQLite:** task_id, target_node, capability, status, timestamps,
+error_code, payload_size, result_size.
+
+**Not persisted:** command text, file content, stdout/stderr, task payload body.
+
+Synchronous task results (`dispatch_sync`) are kept in an in-memory cache for
+the duration of the wait, then remain available for retrieval until the Master
+process restarts. Asynchronous task metadata is persisted and survives restarts.
+Pass `?full=true` to `GET /api/tasks/{task_id}` to retrieve the in-memory result
+body (if still available).
 
 ## Structured Error Codes
 

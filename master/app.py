@@ -13,6 +13,7 @@ from shared.config import MasterConfig, load_master_config
 from .registry import Registry
 from .broker import Broker
 from .router import Router
+from .task_store import TaskStore
 from .api.nodes import create_routes as node_routes
 from .api.tasks import create_routes as task_routes
 
@@ -26,7 +27,9 @@ def create_app(config: MasterConfig = None) -> Starlette:
 
     registry = Registry(db_path=config.db_path)
     broker = Broker()
-    router = Router(broker)
+    task_db = config.db_path.replace("registry.db", "tasks.db")
+    task_store = TaskStore(db_path=task_db)
+    router = Router(broker, task_store=task_store)
 
     async def health(request):
         return JSONResponse({
@@ -36,7 +39,7 @@ def create_app(config: MasterConfig = None) -> Starlette:
 
     routes = [Route("/health", health, methods=["GET"])]
     routes += node_routes(registry, broker, config.node_token)
-    routes += task_routes(router, registry, config.node_token, config.client_token)
+    routes += task_routes(router, registry, task_store, config.node_token, config.client_token)
 
     @asynccontextmanager
     async def lifespan(app):

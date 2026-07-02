@@ -57,15 +57,43 @@ The `Capability` enum and mapping tables are in `shared/protocol.py`.
 | Command | Legacy Alias | Description |
 |---|---|---|
 | `capown nodes` | `list_nodes` | List registered workers |
-| `capown run <node> <cmd>` | `run_command` | Execute shell command |
+| `capown run <node> <cmd>` | `run_command` | Execute shell command (sync) |
 | `capown read <node> <path>` | `read_file` | Read a file |
 | `capown write <node> <path> <content>` | `write_file` | Write content to a file |
 | `capown ls <node> [path]` | `list_directory` | List directory contents |
 | `capown info <node>` | `system_info` | Show system information |
+| `capown dispatch <node> <cmd>` | — | Execute shell command asynchronously, returns task_id |
+| `capown task <task_id>` | — | Show task status and metadata by task_id |
 
 Old command names remain usable for backward compatibility.
 
-### 0.3 Output Size Limit
+### 0.3 API Input Validation
+
+Task dispatch endpoints (`/api/tasks/dispatch`, `/api/tasks/dispatch_sync`) validate
+request bodies using Pydantic's `DispatchRequest` model:
+
+- `target_node` — required, must be non-empty string
+- `payload` — required, must contain valid `task_type` from `TaskType` enum
+- `timeout` — optional, integer 1–3600 (default 120)
+
+Invalid requests return HTTP 400 with `error_code: schema_invalid` and
+a human-readable error message. JSON parse errors also return `schema_invalid`.
+
+### 0.4 Task Metadata Persistence
+
+The Master persists minimal task metadata in a separate SQLite database (`tasks.db`).
+Only routing and status fields are stored — never command text, file content,
+or full stdout/stderr.
+
+**Stored:** task_id, target_node, capability, status, created_at, updated_at,
+error_code, payload_size, result_size.
+
+**Not stored:** command text, file content, stdout/stderr, payload body.
+
+`GET /api/tasks/{task_id}` returns metadata by default. Pass `?full=true`
+to include the result body (if still available in the in-memory cache).
+
+### 0.5 Output Size Limit
 
 Worker config `max_output_size` (env: `MAX_OUTPUT_SIZE`) caps result output
 at 200,000 bytes by default. Exceeding this returns `output_too_large` with an

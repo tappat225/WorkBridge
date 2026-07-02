@@ -314,6 +314,246 @@ def test_print_result():
         sys.stderr = old_stderr
 
 
+def test_dispatch_request_validation():
+    """Verify DispatchRequest Pydantic validation rejects invalid input."""
+    from shared.protocol import DispatchRequest, TaskType
+    from pydantic import ValidationError
+
+    # Valid request passes
+    req = DispatchRequest(
+        target_node="worker-1",
+        payload={"task_type": "shell", "params": {"command": "echo hello"}},
+        timeout=30,
+    )
+    assert req.target_node == "worker-1"
+    assert req.payload.task_type == TaskType.shell
+    assert req.timeout == 30
+    print("  OK: valid DispatchRequest accepted")
+
+    # Missing target_node
+    try:
+        DispatchRequest(payload={"task_type": "shell"}, timeout=30)
+        assert False, "should have raised"
+    except ValidationError as e:
+        assert any("target_node" in str(err["loc"]) for err in e.errors())
+    print("  OK: missing target_node rejected")
+
+    # Empty target_node
+    try:
+        DispatchRequest(target_node="", payload={"task_type": "shell"})
+        assert False, "should have raised"
+    except ValidationError:
+        pass
+    print("  OK: empty target_node rejected")
+
+    # Missing payload
+    try:
+        DispatchRequest(target_node="worker-1")
+        assert False, "should have raised"
+    except ValidationError:
+        pass
+    print("  OK: missing payload rejected")
+
+    # Invalid task_type
+    try:
+        DispatchRequest(
+            target_node="worker-1",
+            payload={"task_type": "invalid_type", "params": {}},
+        )
+        assert False, "should have raised"
+    except ValidationError:
+        pass
+    print("  OK: invalid task_type rejected")
+
+    # Timeout out of range (0)
+    try:
+        DispatchRequest(
+            target_node="worker-1",
+            payload={"task_type": "shell", "params": {}},
+            timeout=0,
+        )
+        assert False, "should have raised"
+    except ValidationError:
+        pass
+    print("  OK: timeout=0 rejected")
+
+    # Timeout out of range (>3600)
+    try:
+        DispatchRequest(
+            target_node="worker-1",
+            payload={"task_type": "shell", "params": {}},
+            timeout=9999,
+        )
+        assert False, "should have raised"
+    except ValidationError:
+        pass
+    print("  OK: timeout > 3600 rejected")
+
+
+def test_task_metadata_serialization():
+    """Verify TaskMetadata model has no payload/result body fields."""
+    from shared.protocol import TaskMetadata
+
+    meta = TaskMetadata(
+        task_id="abc123",
+        target_node="worker-1",
+        capability="shell.run",
+        status="completed",
+        created_at="2026-07-02T00:00:00",
+        updated_at="2026-07-02T00:01:00",
+        error_code=None,
+        payload_size=42,
+        result_size=128,
+    )
+    data = meta.model_dump(mode="json")
+
+    # Must NOT contain command, content, output, or error fields
+    assert "command" not in data, "metadata must not contain command"
+    assert "content" not in data, "metadata must not contain content"
+    assert "output" not in data, "metadata must not contain output"
+    assert "error" not in data, "metadata must not contain raw error"
+    assert "params" not in data, "metadata must not contain params"
+
+    # Must contain metadata fields
+    assert data["task_id"] == "abc123"
+    assert data["target_node"] == "worker-1"
+    assert data["capability"] == "shell.run"
+    assert data["payload_size"] == 42
+    assert data["result_size"] == 128
+    print("  OK: TaskMetadata omits sensitive content fields")
+    print("  OK: TaskMetadata includes routing and size fields")
+
+
+def test_task_store():
+    """Verify TaskStore persists metadata correctly and omits sensitive content."""
+    import os
+    from master.task_store import TaskStore
+    from shared.protocol import TaskMetadata
+
+    db_path = "_test_tasks.db"
+    # Clean up any stale database from a previous failed run
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    try:
+        store = TaskStore(db_path=db_path)
+
+        # Create a task
+        meta = store.create(
+            task_id="test-1",
+            target_node="worker-1",
+            capability="shell.run",
+            status="dispatched",
+            payload_size=42,
+        )
+        assert meta.task_id == "test-1"
+        assert meta.target_node == "worker-1"
+        assert meta.status == "dispatched"
+        assert meta.payload_size == 42
+        assert meta.result_size == 0
+        print("  OK: TaskStore.create stores metadata")
+
+        # Update status
+        store.update_status("test-1", "completed", error_code=None, result_size=128)
+        meta2 = store.get("test-1")
+        assert meta2.status == "completed"
+        assert meta2.result_size == 128
+        assert meta2.error_code is None
+        print("  OK: TaskStore.update_status updates fields")
+
+        # Update with error
+        store.update_status("test-1", "failed", error_code="execution_failed")
+        meta3 = store.get("test-1")
+        assert meta3.status == "failed"
+        assert meta3.error_code == "execution_failed"
+        print("  OK: TaskStore.update_status with error_code")
+
+        # Task not found
+        assert store.get("nonexistent") is None
+        print("  OK: TaskStore.get returns None for unknown task")
+
+        # List by node
+        store.create("test-2", "worker-1", "file.read", "completed", 10)
+        store.create("test-3", "worker-2", "system.info", "completed", 5)
+        worker1_tasks = store.list_by_node("worker-1")
+        assert len(worker1_tasks) == 2
+        all_tasks = store.list_recent(limit=10)
+        assert len(all_tasks) == 3
+        print("  OK: TaskStore list operations return correct results")
+
+        # Verify no sensitive fields leak
+        raw = store.get("test-1").model_dump(mode="json")
+        assert "command" not in raw
+        assert "content" not in raw
+        assert "output" not in raw
+        assert "params" not in raw
+        print("  OK: TaskStore does not persist command, content, output, or params")
+
+        store.close()
+    finally:
+        if os.path.exists(db_path):
+            try:
+                os.remove(db_path)
+            except PermissionError:
+                pass
+
+    print("  OK: TaskStore cleanup works")
+
+
+def test_data_retention_boundary():
+    """Verify that payload content does not leak into persisted metadata."""
+    import os
+    from master.task_store import TaskStore
+
+    db_path = "_test_retention.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    try:
+        store = TaskStore(db_path=db_path)
+
+        # Simulate what Router.dispatch() records: capability + payload_size only
+        store.create(
+            task_id="sensitive-1",
+            target_node="worker-1",
+            capability="shell.run",
+            status="dispatched",
+            payload_size=64,
+        )
+        store.update_status("sensitive-1", "completed", result_size=128)
+
+        # Verify the database schema excludes sensitive columns
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(task_metadata)").fetchall()}
+        conn.close()
+
+        # Must have metadata columns
+        assert "task_id" in columns
+        assert "target_node" in columns
+        assert "capability" in columns
+        assert "status" in columns
+        assert "payload_size" in columns
+        assert "result_size" in columns
+        assert "error_code" in columns
+
+        # Must NOT have sensitive content columns
+        assert "command" not in columns
+        assert "content" not in columns
+        assert "output" not in columns
+        assert "params" not in columns
+        assert "payload" not in columns
+        assert "result" not in columns
+        print("  OK: SQLite schema has no sensitive content columns")
+
+        store.close()
+    finally:
+        if os.path.exists(db_path):
+            try:
+                os.remove(db_path)
+            except PermissionError:
+                pass
+    print("  OK: data retention boundary enforced")
+
+
 def test_master_error_codes():
     """Verify Master error responses include error_code."""
     # Master uses ErrorCode enum values in JSON responses;
@@ -346,6 +586,10 @@ if __name__ == "__main__":
         ("Output truncation", test_output_truncation),
         ("Print result", test_print_result),
         ("Master error codes", test_master_error_codes),
+        ("Dispatch validation", test_dispatch_request_validation),
+        ("Task metadata", test_task_metadata_serialization),
+        ("Task store", test_task_store),
+        ("Data retention", test_data_retention_boundary),
     ]
 
     passed = 0

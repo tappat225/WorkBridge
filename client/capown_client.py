@@ -46,6 +46,12 @@ COMMAND_ALIASES = {
     "info":    ("system_info", "Show system information for a worker"),
 }
 
+# Commands that are not simple alias mappings
+ASYNC_COMMANDS = {
+    "dispatch": "Dispatch a shell command asynchronously and return task_id",
+    "task":     "Show task status and metadata by task_id",
+}
+
 
 class CapOwnClient:
     def __init__(self, config):
@@ -81,6 +87,35 @@ class CapOwnClient:
 
     def list_nodes(self):
         return self._get_json("/api/nodes")
+
+    def dispatch_async(self, node_id, task_type, params, timeout=120):
+        """Dispatch a task and return immediately with task_id."""
+        return self._post_json(
+            "/api/tasks/dispatch",
+            {
+                "target_node": node_id,
+                "timeout": timeout,
+                "payload": {
+                    "task_type": task_type,
+                    "params": params,
+                },
+            },
+        )
+
+    def get_task(self, task_id):
+        """Get task status metadata by task_id."""
+        url = self.config.master_url.rstrip("/") + f"/api/tasks/{task_id}"
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Bearer {self.config.client_token}"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, context=ssl.create_default_context()) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"HTTP {e.code}: {body}") from e
 
     def dispatch_sync(self, node_id, task_type, params):
         return self._post_json(
@@ -207,11 +242,52 @@ def main():
     p = sub.add_parser("info", help=COMMAND_ALIASES["info"][1])
     p.add_argument("node", help="target worker node id")
 
+    # -- Async commands --
+    p = sub.add_parser("dispatch", help=ASYNC_COMMANDS["dispatch"])
+    p.add_argument("node", help="target worker node id")
+    p.add_argument("command", help="shell command to execute asynchronously")
+    p.add_argument("--timeout", type=int, default=120, help="task timeout in seconds")
+
+    p = sub.add_parser("task", help=ASYNC_COMMANDS["task"])
+    p.add_argument("task_id", help="task id to query")
+
     args = parser.parse_args()
     config = load_client_config(args.config)
     client = CapOwnClient(config)
 
     try:
+        # Async commands
+        if args.action == "dispatch":
+            result = client.dispatch_async(args.node, "shell", {"command": args.command},
+                                           timeout=args.timeout)
+            task_id = result.get("task_id", "unknown")
+            print(f"task_id: {task_id}")
+            return
+
+        if args.action == "task":
+            meta = client.get_task(args.task_id)
+            # Print metadata summary
+            tid = meta.get("task_id", "?")
+            status = meta.get("status", "?")
+            node = meta.get("target_node", "?")
+            cap = meta.get("capability", "?")
+            err = meta.get("error_code", "")
+            created = meta.get("created_at", "")[:19]
+            updated = meta.get("updated_at", "")[:19]
+            psize = meta.get("payload_size", 0)
+            rsize = meta.get("result_size", 0)
+            print(f"task_id:    {tid}")
+            print(f"status:     {status}")
+            print(f"node:       {node}")
+            print(f"capability: {cap}")
+            if err:
+                print(f"error:      {err}")
+            print(f"created:    {created}")
+            print(f"updated:    {updated}")
+            print(f"payload:    {psize} bytes")
+            print(f"result:     {rsize} bytes")
+            return
+
         # Map new commands to legacy actions
         action = args.action
         if action in COMMAND_ALIASES:
