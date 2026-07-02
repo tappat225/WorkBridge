@@ -18,7 +18,9 @@
 
 CapOwn 让本地 AI Agent 可以使用其他机器作为远程执行双手。Worker
 主动向 Master 建立 HTTPS/SSE 出站连接，因此 NAT 后面的机器不需要公网
-IP，也不需要开放入站端口。
+IP，也不需要开放入站端口。传输可以直接走标准 HTTPS 443 端口，使用
+SSE 而不是 WebSocket，不依赖特殊网络端口，因此在许多受限网络环境里
+也更容易使用。
 
 **一个 Agent。多台设备。无需入站端口。最小信任中继。**
 
@@ -39,6 +41,7 @@ CapOwn 的首要目标很窄：
 ## 功能
 
 - **Worker 全出站连接**：Worker 通过 HTTPS + SSE 连接 Master。
+- **网络环境友好**：可直接走标准 HTTPS/443，不依赖 WebSocket，也不需要特殊入站端口。
 - **Agent 友好动作**：Shell、文件读写/列目录、系统信息。
 - **紧凑能力词表**：`shell.run`、`file.read`、`file.write`、
   `file.list`、`system.info`。

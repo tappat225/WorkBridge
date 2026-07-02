@@ -18,7 +18,10 @@
 
 CapOwn lets a local AI Agent use other machines as remote execution hands.
 Workers keep an outbound HTTPS/SSE connection to a Master, so machines behind
-NAT do not need public IPs or inbound ports.
+NAT do not need public IPs or inbound ports. The transport can run over the
+standard HTTPS port 443, uses SSE instead of WebSocket, and does not require
+special network ports, so it works better in many restricted network
+environments.
 
 **One Agent. Many devices. No inbound ports. Minimal-trust relay.**
 
@@ -40,6 +43,8 @@ CapOwn focuses on a narrow first job:
 ## Features
 
 - **Outbound-only workers**: Workers connect to Master over HTTPS + SSE.
+- **Network-friendly transport**: runs over standard HTTPS/443, does not rely
+  on WebSocket, and avoids special inbound ports.
 - **Agent-friendly actions**: shell, file read/write/list, and system info.
 - **Compact capability vocabulary**: `shell.run`, `file.read`, `file.write`,
   `file.list`, and `system.info`.
