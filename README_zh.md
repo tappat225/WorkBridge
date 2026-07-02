@@ -1,10 +1,41 @@
-# CapOwn
+<p align="center">
+  <img src="assets/CapOwn_concept.png" alt="CapOwn 概念图" width="800">
+</p>
 
-[English](README.md) | 中文
+<p align="center">
+  <a href="https://github.com/tappat225/CapOwn/stargazers">
+    <img src="https://img.shields.io/github/stars/tappat225/CapOwn?style=for-the-badge&color=f1c40f" alt="Stars">
+  </a>
+  <a href="https://github.com/tappat225/CapOwn/blob/master/LICENSE">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0--only%20%2F%20Apache--2.0-blue?style=for-the-badge" alt="License">
+  </a>
+  <a href="https://www.python.org/">
+    <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  </a>
+  <a href="https://github.com/tappat225/CapOwn/issues">
+    <img src="https://img.shields.io/github/issues/tappat225/CapOwn?style=for-the-badge&color=2ecc71" alt="Issues">
+  </a>
+  <a href="https://github.com/tappat225/CapOwn/pulls">
+    <img src="https://img.shields.io/github/issues-pr/tappat225/CapOwn?style=for-the-badge&color=3498db" alt="Pull Requests">
+  </a>
+</p>
 
-多主机远程操作与 AI Agent 协调系统。中央 Master 节点通过 HTTPS + SSE 管理并调度任务至多个 Worker 节点，实现跨网络执行，Worker 无需开放入站端口。
+<h1 align="center">CapOwn</h1>
 
-## 架构
+<p align="center">
+  <strong>多主机远程操作与 AI Agent 协调系统</strong><br>
+  跨网络调度任务 — Worker 仅需出站 HTTPS，无需开放入站端口。
+</p>
+
+<p align="center">
+  <a href="README.md">English</a>
+</p>
+
+---
+
+## ✨ 架构
+
+中央 **Master** 节点通过 HTTPS + SSE 管理并调度任务至多个 **Worker** 节点，实现跨网络执行，Worker 无需开放入站端口。
 
 ```
 [Client / Agent]
@@ -20,77 +51,39 @@
     ...
 ```
 
-### 设计约束
+### 🧱 设计约束
 
-- **全出站连接**: Worker 仅需出站 HTTPS，无需开放入站端口。
-- **中央路由枢纽**: 所有节点间通信均通过 Master 路由。
-- **能力/智能分离**: Worker 负责执行；Agent 负责 LLM 决策。
-- **双部署模式**: Worker 支持容器 (Docker) 与宿主机 (原生) 两种部署模式。容器模式将用户选择的宿主机目录挂载为 Worker 工作区；宿主机模式直接在宿主机上执行命令。
+| 约束 | 说明 |
+|---|---|
+| 🔌 **全出站连接** | Worker 仅需出站 HTTPS，无需开放入站端口。 |
+| 🧭 **中央路由枢纽** | 所有节点间通信均通过 Master 路由。 |
+| 🧠 **能力/智能分离** | Worker 负责执行；Agent 负责 LLM 决策。 |
+| 🐳 **双部署模式** | 容器 (Docker) 与宿主机 (原生)。容器模式将宿主机目录挂载为工作区；宿主机模式直接执行命令。 |
 
-### 组件
+### 🧩 组件
 
 | 组件 | 职责 |
 |---|---|
 | **Master** | 节点注册表、SSE 代理、任务路由、认证网关 |
-| **Worker** | 轻量守护进程，连接 Master、执行任务、上报结果 |
-| **Client** | CLI 工具或 SDK，向 Master 调度任务 |
+| **Worker** | 轻量守护进程 — 连接 Master、执行任务、上报结果 |
+| **Client** | CLI 工具 / SDK，向 Master 调度任务 |
 
-## 目录结构
+> 📖 架构详情及目录结构请参阅 [docs/architecture.md](docs/architecture.md)（英文）。
 
-```
-CapOwn/
-├── deploy.py                       # 统一交互式部署脚本 (菜单驱动)
-├── shared/                         # 共享协议与工具
-│   ├── protocol.py                 #   Pydantic 数据模型 (Node, Task, SSEEvent, 枚举)
-│   ├── auth.py                     #   Token 生成与验证
-│   └── config.py                   #   MasterConfig / WorkerConfig 配置模式
-├── master/                         # Master: 中央控制面
-│   ├── app.py                      #   Starlette 应用入口
-│   ├── registry.py                 #   节点注册表 (SQLite)
-│   ├── broker.py                   #   SSE 连接池管理器
-│   ├── router.py                   #   任务调度与 Future 匹配
-│   ├── auth.py                     #   Bearer Token 中间件
-│   ├── api/
-│   │   ├── nodes.py                #   节点注册/心跳/列表/SSE
-│   │   └── tasks.py                #   任务调度/结果端点
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── requirements.txt
-│   └── config.toml.example
-├── worker/                         # Worker: 执行面
-│   ├── daemon.py                   #   主进程 (注册 + SSE 监听 + 重连)
-│   ├── reporter.py                 #   结果上报 (POST 回 Master)
-│   ├── executor/
-│   │   ├── base.py                 #   抽象执行器接口
-│   │   ├── shell.py                #   Shell 命令执行器
-│   │   ├── file.py                 #   文件读写/列表执行器
-│   │   └── system_info.py          #   系统信息执行器 (无需 Shell)
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── requirements.txt
-│   └── config.toml.example
-├── client/                         # Client: CLI 客户端
-│   ├── capown_client.py
-│   └── config.ini.example
-├── docs/
-│   ├── deploy.md                   # 部署指南 (英文)
-│   └── user_guide.md               # 使用指南 (英文)
-├── README.md
-├── README_zh.md
-├── agent.md
-└── .gitignore
-```
+## 🚀 快速部署（推荐）
 
-## 快速部署
+使用交互式部署脚本，引导式配置 — 无需参数：
 
 ```bash
 cd CapOwn/
 python3 deploy.py
 ```
 
-部署脚本完全菜单驱动，引导完成 Master、Worker 或两者的配置。完整部署指南（包括 Nginx 配置、构建参数、镜像选择及故障排查）见 [docs/deploy.md](docs/deploy.md)。
+部署脚本完全菜单驱动，引导完成 Master、Worker 或两者的配置。
 
-## 快速使用
+> 📖 完整部署指南（包括 Nginx 配置、构建参数、镜像选择及故障排查）见 [docs/deploy.md](docs/deploy.md)。
+
+## ⚡ 快速使用
 
 ```bash
 # 列出已注册的 Worker
@@ -100,20 +93,20 @@ python client/capown_client.py nodes
 python client/capown_client.py run worker-1 "uname -a"
 ```
 
-完整使用指南（包括配置说明、所有 CLI 命令、直接 API 调用、错误码及能力词汇表）见 [docs/user_guide.md](docs/user_guide.md)。
+> 📖 完整使用指南（包括配置说明、所有 CLI 命令、直接 API 调用、错误码及能力词汇表）见 [docs/user_guide.md](docs/user_guide.md)。
 
-## 贡献
+## 🤝 贡献
 
-欢迎贡献代码。在发起 Pull Request 之前，请阅读
-[CONTRIBUTING.md](CONTRIBUTING.md) 和 [CLA.md](CLA.md)。Pull Request
-仅接受同意 CapOwn CLA 的贡献者提交。
+欢迎贡献代码！在发起 Pull Request 之前，请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CLA.md](CLA.md)。Pull Request 仅接受同意 CapOwn CLA 的贡献者提交。
 
-## License
+## 📄 License
 
-CapOwn 使用 open-core 授权模式：
+CapOwn 使用 **open-core** 授权模式：
 
-- `client/`、`worker/`、`shared/`、`docs/`、部署工具和根目录项目文件使用 Apache-2.0。
-- `master/` 是 Community Master，使用 AGPL-3.0-only。
-- 商业 Master 管理系统、Hosted 服务、计费、租户管理、区域中继、企业策略和相关云服务功能会在独立闭源商业条款下开发和分发。
+| 范围 | 许可证 |
+|---|---|
+| `client/`、`worker/`、`shared/`、`docs/`、部署工具、根目录配置 | ![Apache-2.0](https://img.shields.io/badge/Apache--2.0-green?style=flat-square) |
+| `master/` (Community Master) | ![AGPL-3.0](https://img.shields.io/badge/AGPL--3.0--only-orange?style=flat-square) |
+| 商业 Master、托管服务、计费、租户管理、企业策略 | 专有商业许可 |
 
-详见 [LICENSE](LICENSE)。
+> 📖 详见 [LICENSE](LICENSE)。

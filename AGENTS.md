@@ -143,13 +143,15 @@ When modifying configuration: update the matching `.example` template first, the
 
 ### 5. Directory Structure and Separation
 
-- `shared/` — protocol models, auth utilities, config schemas (used by master + worker)
-- `master/` — control plane (Starlette app, registry, broker, router, API endpoints)
-- `worker/` — execution plane (daemon, executors, reporter)
-- `server/` — legacy single-node MCP server (Docker-based)
-- `client/` — legacy CLI client and daemon
+See [docs/architecture.md](docs/architecture.md) for the full directory layout.
 
 Cross-directory imports must go through `shared/`. Master and Worker must not import from each other directly.
+
+- `shared/` — protocol models, auth utilities, config schemas
+- `master/` — control plane
+- `worker/` — execution plane
+- `server/` — legacy single-node MCP server
+- `client/` — legacy CLI client
 
 ### 6. Protocol and Data Models
 
@@ -260,36 +262,9 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
 
 ### 17. Deployment
 
-- Root `deploy.py` is the single entry point for all deployments. It is
-  entirely menu-driven — zero CLI arguments.
-- Old `master/deploy.py` and `worker/deploy.py` are removed.
-- Master deploys in container mode only (Docker). Worker supports both
-  container and host modes.
-- Host mode Worker deploys as a Linux systemd user service or a Windows
-  Scheduled Task. Config is written to
-  `~/.capown/worker/config.toml`.
-- Config directory `~/.capown/` is cross-platform (Linux, macOS,
-  Windows) and is the **canonical home for all persistent data**:
-  ```
-  ~/.capown/
-  ├── master/
-  │   ├── config.toml         # Master configuration
-  │   └── data/               # SQLite database + other persistent data
-  ├── worker/
-  │   ├── config.toml         # Worker configuration
-  │   ├── app/                # Host-mode deployed application copy
-  │   ├── bin/                # Host-mode launcher scripts
-  │   ├── logs/               # Host-mode worker logs
-  │   └── venv/               # Host-mode Python virtual environment
-  └── workspace/              # Host-mode default workspace
-  ```
-- Docker containers mount config and data paths from `~/.capown/` via environment
-  variables (`CAPOWN_MASTER_CONFIG`, `CAPOWN_MASTER_DATA`,
-  `CAPOWN_WORKER_CONFIG`). Worker container mode mounts the
-  user-selected host workspace via `CAPOWN_HOST_WORKSPACE`. The
-  docker-compose files accept these env vars for the host-side paths
-  while the container-side paths stay fixed (`/etc/capown/`,
-  `/app/data/`, `/workspace`).
+- `deploy.py` is the single entry point for interactive deployment (menu-driven, zero CLI arguments).
+- For manual deployment, config file reference, and Docker command details, see [docs/deploy.md](docs/deploy.md).
+- Config directory `~/.capown/` is the canonical home for all persistent deployment data. Docker containers mount config and data paths from there via environment variables.
 
 ### 18. License and Contribution Boundaries
 

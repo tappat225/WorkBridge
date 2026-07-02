@@ -1,10 +1,41 @@
-English | [中文](README_zh.md)
+<p align="center">
+  <img src="assets/CapOwn_concept.png" alt="CapOwn Concept" width="800">
+</p>
 
-# CapOwn
+<p align="center">
+  <a href="https://github.com/tappat225/CapOwn/stargazers">
+    <img src="https://img.shields.io/github/stars/tappat225/CapOwn?style=for-the-badge&color=f1c40f" alt="Stars">
+  </a>
+  <a href="https://github.com/tappat225/CapOwn/blob/master/LICENSE">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0--only%20%2F%20Apache--2.0-blue?style=for-the-badge" alt="License">
+  </a>
+  <a href="https://www.python.org/">
+    <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  </a>
+  <a href="https://github.com/tappat225/CapOwn/issues">
+    <img src="https://img.shields.io/github/issues/tappat225/CapOwn?style=for-the-badge&color=2ecc71" alt="Issues">
+  </a>
+  <a href="https://github.com/tappat225/CapOwn/pulls">
+    <img src="https://img.shields.io/github/issues-pr/tappat225/CapOwn?style=for-the-badge&color=3498db" alt="Pull Requests">
+  </a>
+</p>
 
-Multi-host remote operation and AI Agent coordination system. A central Master node manages and dispatches tasks to multiple Worker nodes over HTTPS + SSE, enabling cross-network execution without requiring inbound ports on worker machines.
+<h1 align="center">CapOwn</h1>
 
-## Architecture
+<p align="center">
+  <strong>Multi-host remote operation &amp; AI Agent coordination system</strong><br>
+  Dispatch tasks across networks — Workers need only outbound HTTPS, no inbound ports.
+</p>
+
+<p align="center">
+  <a href="README_zh.md">中文</a>
+</p>
+
+---
+
+## ✨ Architecture
+
+A central **Master** node manages and dispatches tasks to multiple **Worker** nodes over HTTPS + SSE, enabling cross-network execution without requiring inbound ports on worker machines.
 
 ```
 [Client / Agent]
@@ -20,77 +51,39 @@ Multi-host remote operation and AI Agent coordination system. A central Master n
     ...
 ```
 
-### Design Constraints
+### 🧱 Design Constraints
 
-- **All-outbound connections**: Workers only need outbound HTTPS. No inbound ports required.
-- **Central routing hub**: All inter-node communication routes through Master.
-- **Capability/intelligence split**: Workers provide execution; Agents provide LLM decisions.
-- **Dual deployment modes**: Workers support container (Docker) and host (native) deployment. Container mode bind-mounts a selected host directory as the worker workspace; host mode runs commands directly on the host system.
+| Constraint | Description |
+|---|---|
+| 🔌 **All-outbound** | Workers only need outbound HTTPS. No inbound ports required. |
+| 🧭 **Central routing** | All inter-node communication routes through Master. |
+| 🧠 **Capability/intelligence split** | Workers provide execution; Agents provide LLM decisions. |
+| 🐳 **Dual deployment** | Container (Docker) or host (native). Container mode bind-mounts a host directory; host mode runs commands directly. |
 
-### Components
+### 🧩 Components
 
 | Component | Role |
 |---|---|
 | **Master** | Node registry, SSE broker, task router, auth gateway |
-| **Worker** | Lightweight daemon that connects to Master, executes tasks, reports results |
-| **Client** | CLI tool or SDK to dispatch tasks to Master |
+| **Worker** | Lightweight daemon — connects to Master, executes tasks, reports results |
+| **Client** | CLI tool / SDK to dispatch tasks to Master |
 
-## Directory Structure
+> 📖 See [docs/architecture.md](docs/architecture.md) for the full architecture reference including directory structure.
 
-```
-CapOwn/
-├── deploy.py                       # Unified interactive deploy script (menu-driven)
-├── shared/                         # Shared protocol and utilities
-│   ├── protocol.py                 #   Pydantic models (Node, Task, SSEEvent, enums)
-│   ├── auth.py                     #   Token generation and verification
-│   └── config.py                   #   MasterConfig / WorkerConfig schemas
-├── master/                         # Master: central control plane
-│   ├── app.py                      #   Starlette application entry point
-│   ├── registry.py                 #   Node registry (SQLite)
-│   ├── broker.py                   #   SSE connection pool manager
-│   ├── router.py                   #   Task dispatch and Future matching
-│   ├── auth.py                     #   Bearer token middleware
-│   ├── api/
-│   │   ├── nodes.py                #   Node register/heartbeat/list/SSE
-│   │   └── tasks.py                #   Task dispatch/result endpoints
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── requirements.txt
-│   └── config.toml.example
-├── worker/                         # Worker: execution plane
-│   ├── daemon.py                   #   Main process (register + SSE listen + reconnect)
-│   ├── reporter.py                 #   Result reporter (POST back to Master)
-│   ├── executor/
-│   │   ├── base.py                 #   Abstract executor interface
-│   │   ├── shell.py                #   Shell command executor
-│   │   ├── file.py                 #   File read/write/list executor
-│   │   └── system_info.py          #   System info executor (no shell)
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── requirements.txt
-│   └── config.toml.example
-├── client/                         # Client: CLI + Daemon
-│   ├── capown_client.py
-│   └── config.ini.example
-├── docs/
-│   ├── deploy.md                   # Deployment guide
-│   └── user_guide.md               # User guide
-├── README.md
-├── README_zh.md
-├── agent.md
-└── .gitignore
-```
+## 🚀 Quick Deploy (Recommended)
 
-## Quick Deploy
+Use the interactive deploy script for a guided setup — no arguments needed:
 
 ```bash
 cd CapOwn/
 python3 deploy.py
 ```
 
-The deploy script is entirely menu-driven. It guides you through Master, Worker, or both. See [docs/deploy.md](docs/deploy.md) for the full deployment guide including Nginx setup, build flags, mirror configuration, and troubleshooting.
+The deploy script guides you through Master, Worker, or both with interactive prompts.
 
-## Quick Use
+> 📖 For manual deployment (writing config files, running Docker commands directly), see [docs/deploy.md](docs/deploy.md).
+
+## ⚡ Quick Use
 
 ```bash
 # List registered workers
@@ -100,20 +93,20 @@ python client/capown_client.py nodes
 python client/capown_client.py run worker-1 "uname -a"
 ```
 
-See [docs/user_guide.md](docs/user_guide.md) for the full user guide including configuration reference, all CLI commands, direct API usage, error codes, and capability vocabulary.
+> 📖 See [docs/user_guide.md](docs/user_guide.md) for the full user guide including configuration reference, all CLI commands, direct API usage, error codes, and capability vocabulary.
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome. Before opening a pull request, read
-[CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Pull requests are
-accepted only from contributors who agree to the CapOwn CLA.
+Contributions are welcome! Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Pull requests are accepted only from contributors who agree to the CapOwn CLA.
 
-## License
+## 📄 License
 
-CapOwn uses an open-core licensing model:
+CapOwn uses an **open-core** licensing model:
 
-- `client/`, `worker/`, `shared/`, `docs/`, deployment tooling, and root-level project files are licensed under Apache-2.0.
-- `master/` is the Community Master and is licensed under AGPL-3.0-only.
-- Commercial Master management, hosted service, billing, tenant administration, regional relay, enterprise policy, and related cloud features will be developed separately under proprietary commercial terms.
+| Scope | License |
+|---|---|
+| `client/`, `worker/`, `shared/`, `docs/`, deployment tooling, root configs | ![Apache-2.0](https://img.shields.io/badge/Apache--2.0-green?style=flat-square) |
+| `master/` (Community Master) | ![AGPL-3.0](https://img.shields.io/badge/AGPL--3.0--only-orange?style=flat-square) |
+| Commercial Master, hosted service, billing, tenant admin, enterprise | Proprietary |
 
-See [LICENSE](LICENSE) for the full repository license notice.
+> 📖 See [LICENSE](LICENSE) for the full repository license notice.

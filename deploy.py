@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""CapOwn unified deployment script.
+"""CapOwn interactive deployment script.
 
-Dual-mode: interactive (menu-driven) or batch (CLI arguments).
-
-Interactive usage (no arguments):
+Usage:
     python3 deploy.py
-
-Batch usage:
-    python3 deploy.py --batch --component worker --worker-mode host \\
-        --master-url https://server.com/gb --node-token <token>
-    python3 deploy.py --batch --component master
-    python3 deploy.py -h   # show all options
 """
 
-import argparse
 import os
 import platform
 import secrets
@@ -35,97 +26,6 @@ WORKER_SERVICE_NAME = "capown-worker"
 WORKER_WINDOWS_TASK_NAME = "CapOwnWorker"
 MASTER_CONTAINER_NAME = "capown-master"
 WORKER_CONTAINER_NAME = "capown-worker"
-
-
-# ---------------------------------------------------------------------------
-# CLI argument parsing (batch mode)
-# ---------------------------------------------------------------------------
-
-def _build_parser() -> argparse.ArgumentParser:
-    """Build the argument parser for batch (non-interactive) mode."""
-    p = argparse.ArgumentParser(
-        description="CapOwn deployment script (interactive by default).",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Examples:
-  python3 deploy.py --batch --component worker --worker-mode host --master-url https://example.com/gb --node-token tok
-  python3 deploy.py --batch --component master
-  python3 deploy.py -y --batch --component worker --worker-mode host --master-url https://example.com/gb --node-token tok
-""",
-    )
-    # Mode switches
-    p.add_argument("--batch", action="store_true",
-                   help="Run in non-interactive batch mode")
-    p.add_argument("-y", "--yes", action="store_true",
-                   help="Skip confirmation prompts (batch mode only)")
-    p.add_argument("--component", choices=["master", "worker", "both"],
-                   help="Component to deploy")
-
-    # Master options
-    g_master = p.add_argument_group("Master options")
-    g_master.add_argument("--bind-addr", default="0.0.0.0")
-    g_master.add_argument("--port", default="9210")
-    g_master.add_argument("--heartbeat", default="60")
-    g_master.add_argument("--db-path", default="/app/data/registry.db")
-    g_master.add_argument("--node-token", default=None,
-                          help="Worker auth token (auto-generated if omitted)")
-    g_master.add_argument("--client-token", default=None,
-                          help="Client/API auth token (auto-generated if omitted)")
-
-    # Worker options
-    g_worker = p.add_argument_group("Worker options")
-    g_worker.add_argument("--worker-mode", choices=["container", "host"],
-                          help="Worker deployment mode")
-    g_worker.add_argument("--node-id", default=None,
-                          help="Unique node name (default: hostname)")
-    g_worker.add_argument("--master-url",
-                          help="Master URL, e.g. https://your-server.com/gb")
-    g_worker.add_argument("--command-timeout", default="120",
-                          help="Command timeout in seconds (host mode, default: 120)")
-    g_worker.add_argument("--reconnect-interval", default="5",
-                          help="Reconnect interval in seconds (host mode, default: 5)")
-    g_worker.add_argument("--container-ws", default="/workspace",
-                          help="Container workspace path (container mode, default: /workspace)")
-    g_worker.add_argument("--host-ws", default=None,
-                          help="Host directory to mount (container mode, default: ~/.capown/workspace)")
-
-    # Common
-    p.add_argument("--cn-mirror", action="store_true",
-                   help="Use Tsinghua mirrors for pip")
-
-    return p
-
-
-def _validate_batch_args(args: argparse.Namespace) -> None:
-    """Validate required argument combinations for batch mode. Exits on error."""
-    if not args.component:
-        print("Error: --component is required in batch mode (master|worker|both)")
-        sys.exit(2)
-
-    needs_worker = args.component in ("worker", "both")
-    needs_master = args.component in ("master", "both")
-
-    if needs_worker:
-        if not args.worker_mode:
-            print("Error: --worker-mode is required for worker deployment (container|host)")
-            sys.exit(2)
-        if not args.master_url:
-            print("Error: --master-url is required for worker deployment")
-            sys.exit(2)
-        if not args.node_token:
-            print("Error: --node-token is required for worker deployment")
-            sys.exit(2)
-        if not args.node_id:
-            args.node_id = platform.node() or "worker-1"
-        if args.worker_mode == "container" and not args.host_ws:
-            args.host_ws = str(_get_user_home() / ".capown" / "workspace")
-
-    if needs_master:
-        if not args.node_token:
-            args.node_token = _generate_token()
-            print(f"Auto-generated node token: {args.node_token}")
-        if not args.client_token:
-            args.client_token = _generate_token()
-            print(f"Auto-generated client token: {args.client_token}")
 
 
 # ---------------------------------------------------------------------------
@@ -354,11 +254,11 @@ def _stop_windows_task(name: str) -> None:
     _run_checked(["schtasks", "/End", "/TN", name])
 
 
-def _confirm_stop_running(kind: str, name: str, stop_func, skip_confirm: bool = False) -> bool:
-    """Stop a running service, asking for confirmation unless skipped."""
+def _confirm_stop_running(kind: str, name: str, stop_func) -> bool:
+    """Stop a running service, asking for confirmation."""
     print()
     print(f"Detected running {kind}: {name}")
-    if not skip_confirm and not _ask_yn("Stop it before continuing?", default_yes=True):
+    if not _ask_yn("Stop it before continuing?", default_yes=True):
         print("Deployment cancelled.")
         return False
     stop_func(name)
@@ -366,34 +266,34 @@ def _confirm_stop_running(kind: str, name: str, stop_func, skip_confirm: bool = 
     return True
 
 
-def _prepare_master_container_deploy(skip_confirm: bool = False) -> bool:
+def _prepare_master_container_deploy() -> bool:
     """Stop an existing Master container if the user agrees."""
     if _docker_container_running(MASTER_CONTAINER_NAME):
-        return _confirm_stop_running("master container", MASTER_CONTAINER_NAME, _stop_docker_container, skip_confirm)
+        return _confirm_stop_running("master container", MASTER_CONTAINER_NAME, _stop_docker_container)
     return True
 
 
-def _prepare_worker_container_deploy(skip_confirm: bool = False) -> bool:
+def _prepare_worker_container_deploy() -> bool:
     """Stop an existing Worker container if the user agrees."""
     if _docker_container_running(WORKER_CONTAINER_NAME):
-        return _confirm_stop_running("worker container", WORKER_CONTAINER_NAME, _stop_docker_container, skip_confirm)
+        return _confirm_stop_running("worker container", WORKER_CONTAINER_NAME, _stop_docker_container)
     return True
 
 
-def _prepare_worker_host_deploy(skip_confirm: bool = False) -> bool:
+def _prepare_worker_host_deploy() -> bool:
     """Stop an existing host-mode Worker service if the user agrees."""
     if sys.platform == "linux" and _linux_user_service_running(WORKER_SERVICE_NAME):
-        return _confirm_stop_running("worker user service", WORKER_SERVICE_NAME, _stop_linux_user_service, skip_confirm)
+        return _confirm_stop_running("worker user service", WORKER_SERVICE_NAME, _stop_linux_user_service)
     if sys.platform == "win32" and _windows_task_running(WORKER_WINDOWS_TASK_NAME):
-        return _confirm_stop_running("worker scheduled task", WORKER_WINDOWS_TASK_NAME, _stop_windows_task, skip_confirm)
+        return _confirm_stop_running("worker scheduled task", WORKER_WINDOWS_TASK_NAME, _stop_windows_task)
     return True
 
 
-def _prepare_worker_deploy(skip_confirm: bool = False) -> bool:
+def _prepare_worker_deploy() -> bool:
     """Stop any existing Worker process, regardless of deployment mode."""
-    if not _prepare_worker_container_deploy(skip_confirm):
+    if not _prepare_worker_container_deploy():
         return False
-    if not _prepare_worker_host_deploy(skip_confirm):
+    if not _prepare_worker_host_deploy():
         return False
     return True
 
@@ -478,7 +378,7 @@ Your Master will then be reachable at:
 # master deployment (container only)
 # ---------------------------------------------------------------------------
 
-def _deploy_master(env: dict[str, str], params: dict, skip_confirm: bool = False) -> int:
+def _deploy_master(env: dict[str, str], params: dict) -> int:
     """Deploy Master in container mode.
 
     ``params`` must contain:
@@ -507,11 +407,11 @@ def _deploy_master(env: dict[str, str], params: dict, skip_confirm: bool = False
     print(f"  China mirrors:    {'yes' if use_cn else 'no'}")
     print()
 
-    if not skip_confirm and not _ask_yn("Save and deploy?"):
+    if not _ask_yn("Save and deploy?"):
         print("Cancelled.")
         return 0
 
-    if not _prepare_master_container_deploy(skip_confirm):
+    if not _prepare_master_container_deploy():
         return 1
 
     master_config_dir.mkdir(parents=True, exist_ok=True)
@@ -863,7 +763,7 @@ def _print_host_management_commands() -> None:
         print(f"  schtasks /End /TN {WORKER_WINDOWS_TASK_NAME}")
 
 
-def _deploy_worker(env: dict[str, str], params: dict, skip_confirm: bool = False) -> int:
+def _deploy_worker(env: dict[str, str], params: dict) -> int:
     """Deploy Worker in the specified mode.
 
     ``params`` must contain:
@@ -903,11 +803,11 @@ def _deploy_worker(env: dict[str, str], params: dict, skip_confirm: bool = False
     print(f"  China mirrors:    {'yes' if use_cn else 'no'}")
     print()
 
-    if not skip_confirm and not _ask_yn("Save and deploy?"):
+    if not _ask_yn("Save and deploy?"):
         print("Cancelled.")
         return 0
 
-    if not _prepare_worker_deploy(skip_confirm):
+    if not _prepare_worker_deploy():
         return 1
 
     if mode == "container":
@@ -985,13 +885,6 @@ def _deploy_worker_interactive(env: dict[str, str]) -> int:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    parser = _build_parser()
-    args = parser.parse_args()
-
-    if args.batch:
-        return _main_batch(args)
-
-    # --- Interactive mode (no --batch) ---
     print("=================================")
     print("    CapOwn Deployment")
     print("=================================")
@@ -1023,52 +916,6 @@ def main() -> int:
             print()
             print("Master is up. Now configuring Worker...")
             ret = _deploy_worker_interactive(env)
-
-    return ret
-
-
-def _main_batch(args: argparse.Namespace) -> int:
-    """Non-interactive batch deployment from CLI arguments."""
-    _validate_batch_args(args)
-
-    env = os.environ.copy()
-    env.setdefault("DOCKER_BUILDKIT", "0")
-
-    skip_confirm = args.yes
-
-    ret = 0
-
-    if args.component in ("master", "both"):
-        if not _detect_docker():
-            print("ERROR: Docker is required for master deployment.")
-            return 1
-        ret = _deploy_master(env, {
-            "bind_addr": args.bind_addr,
-            "port": args.port,
-            "heartbeat": args.heartbeat,
-            "db_path": args.db_path,
-            "node_token": args.node_token,
-            "client_token": args.client_token,
-            "use_cn": args.cn_mirror,
-        }, skip_confirm=skip_confirm)
-        if ret != 0:
-            return ret
-        if args.component == "both":
-            print()
-            print("Master is up. Now deploying Worker...")
-
-    if args.component in ("worker", "both"):
-        ret = _deploy_worker(env, {
-            "mode": args.worker_mode,
-            "node_id": args.node_id,
-            "master_url": args.master_url,
-            "node_token": args.node_token,
-            "use_cn": args.cn_mirror,
-            "container_ws": args.container_ws,
-            "host_ws": args.host_ws,
-            "command_timeout": args.command_timeout,
-            "reconnect_interval": args.reconnect_interval,
-        }, skip_confirm=skip_confirm)
 
     return ret
 

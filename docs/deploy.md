@@ -1,6 +1,8 @@
-# CapOwn — Deployment Guide
+# CapOwn — Manual Deployment Guide
 
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
+> **Tip:** The interactive deploy script (`python3 deploy.py`) is the recommended way to deploy. This guide covers manual setup for advanced use cases.
 
 ## Prerequisites
 
@@ -8,52 +10,233 @@
 - Python 3.x available on any Worker host running in host mode
 - Outbound HTTPS access from all Worker hosts to the Master
 
-## Deploy Script
+## Master Deployment (Container)
+
+### 1. Write Config File
+
+Create `~/.capown/master/config.toml`:
+
+```toml
+[master]
+host = "0.0.0.0"
+port = "9210"
+heartbeat_timeout = "60"
+db_path = "/app/data/registry.db"
+
+[auth]
+node_token = "<your-node-token>"
+client_token = "<your-client-token>"
+```
+
+Tokens can be any secure random string. Generate one with:
 
 ```bash
-cd CapOwn/
-python3 deploy.py
+python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-The unified deploy script is entirely menu-driven — no command-line arguments required. It guides you through configuration for Master, Worker, or both.
+### 2. Prepare Data Directory
 
-### Master (central control plane)
-
-Master always deploys in container mode (Docker). The script will prompt for:
-
-- Bind address and port
-- Authentication tokens (auto-generate or enter manually)
-- Mirror selection (international or China mirrors)
-
-Configuration and persistent data are stored under `~/.capown/master/`:
-
-```
-~/.capown/master/
-├── config.toml    # Master configuration
-└── data/          # SQLite database (registry.db)
+```bash
+mkdir -p ~/.capown/master/data
 ```
 
-Master listens on `127.0.0.1:9210`. Use Nginx to expose it over HTTPS.
+### 3. Build and Run
 
-### Worker (execution node)
+```bash
+cd master/
 
-Worker supports two deployment modes:
+# Build with defaults (international mirrors)
+DOCKER_BUILDKIT=0 docker compose build
 
-- **Container mode** — Docker sandbox with a selected host directory mounted as `/workspace`. Best for shared servers and workloads that should only access a bounded workspace.
-- **Host mode** — runs natively as a Linux systemd user service or a Windows Scheduled Task, with commands executed on the host system. Best for trusted personal machines.
+# Or with China mirrors
+DOCKER_BUILDKIT=0 \
+  APT_MIRROR=mirrors.tuna.tsinghua.edu.cn \
+  PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  docker compose build
 
-### Same-machine Master + Worker
+# Start the container
+CAPOWN_MASTER_CONFIG="$HOME/.capown/master/config.toml" \
+  CAPOWN_MASTER_DATA="$HOME/.capown/master/data" \
+  docker compose up -d
 
-When Master and Worker run on the same host, choose "Both" in the deploy menu. The script deploys Master first, then Worker. Point the Worker directly at localhost to avoid network path issues with SSE streaming:
+# Check status
+docker compose logs master
+```
+
+### 4. Verify
+
+```bash
+curl http://127.0.0.1:9210/health
+```
+
+## Worker Deployment
+
+### Container Mode
+
+#### 1. Write Config File
+
+Create `~/.capown/worker/config.toml`:
+
+```toml
+[worker]
+mode = "container"
+node_id = "<unique-node-name>"
+master_url = "https://your-server.com/gb"
+workspace = "/workspace"
+command_timeout = "120"
+reconnect_interval = "5"
+
+[auth]
+node_token = "<master-node-token>"
+```
+
+#### 2. Prepare Workspace
+
+```bash
+mkdir -p ~/.capown/workspace
+```
+
+#### 3. Build and Run
+
+```bash
+cd worker/
+
+# Build
+DOCKER_BUILDKIT=0 docker compose build
+
+# Start
+CAPOWN_HOST_WORKSPACE="$HOME/.capown/workspace" \
+  CAPOWN_CONTAINER_WORKSPACE="/workspace" \
+  CAPOWN_WORKER_CONFIG="$HOME/.capown/worker/config.toml" \
+  docker compose up -d
+
+# Check logs
+docker compose logs worker
+```
+
+### Host Mode (Linux)
+
+#### 1. Write Config File
+
+Create `~/.capown/worker/config.toml`:
+
+```toml
+[worker]
+mode = "host"
+node_id = "<unique-node-name>"
+master_url = "https://your-server.com/gb"
+workspace = "/"
+command_timeout = "120"
+reconnect_interval = "5"
+
+[auth]
+node_token = "<master-node-token>"
+```
+
+#### 2. Install Application Copy
+
+```bash
+mkdir -p ~/.capown/worker/app
+cp -r ../shared ~/.capown/worker/app/
+cp -r ../worker ~/.capown/worker/app/
+cp ../worker/requirements.txt ~/.capown/worker/app/
+```
+
+#### 3. Create Virtual Environment
+
+```bash
+python3 -m venv ~/.capown/worker/venv
+~/.capown/worker/venv/bin/pip install -r ~/.capown/worker/app/requirements.txt
+```
+
+#### 4. Install systemd Service
+
+Create `~/.config/systemd/user/capown-worker.service`:
+
+```ini
+[Unit]
+Description=CapOwn Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.capown/worker/venv/bin/python -m worker.daemon
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+```
+
+Then enable and start:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now capown-worker
+
+# Enable linger so the service starts on boot
+sudo loginctl enable-linger $USER
+```
+
+### Host Mode (Windows)
+
+#### 1. Write Config File
+
+Same as Linux host mode above. Place it at `%USERPROFILE%\.capown\worker\config.toml`.
+
+#### 2. Install Application Copy
+
+```powershell
+mkdir "$env:USERPROFILE\.capown\worker\app" -Force
+Copy-Item ..\shared "$env:USERPROFILE\.capown\worker\app\" -Recurse
+Copy-Item ..\worker "$env:USERPROFILE\.capown\worker\app\" -Recurse
+Copy-Item ..\worker\requirements.txt "$env:USERPROFILE\.capown\worker\app\"
+```
+
+#### 3. Create Virtual Environment
+
+```powershell
+python -m venv "$env:USERPROFILE\.capown\worker\venv"
+& "$env:USERPROFILE\.capown\worker\venv\Scripts\pip" install -r "$env:USERPROFILE\.capown\worker\app\requirements.txt"
+```
+
+#### 4. Create Scheduled Task
+
+```powershell
+# Remove existing task if any
+schtasks /Delete /TN CapOwnWorker /F
+
+# Create new task
+schtasks /Create `
+  /TN CapOwnWorker `
+  /SC ONLOGON `
+  /TR "$env:USERPROFILE\.capown\worker\venv\Scripts\python -m worker.daemon" `
+  /RL LIMITED `
+  /F
+
+# Start the task
+schtasks /Run /TN CapOwnWorker
+```
+
+## Same-machine Master + Worker
+
+When Master and Worker run on the same host, configure the Worker to connect via localhost:
 
 ```toml
 # worker/config.toml
+[worker]
+mode = "container"  # or "host"
+node_id = "local-worker"
 master_url = "http://127.0.0.1:9210"
+# ...
 ```
 
 ## Configure Nginx
 
-Merge the following into your HTTPS server block (see `master/nginx.conf.example`):
+Merge the following into your HTTPS server block:
 
 ```nginx
 location /gb/ {
@@ -124,21 +307,14 @@ RUN sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g" ...
 | `APT_MIRROR` | `deb.debian.org` | `mirrors.tuna.tsinghua.edu.cn` |
 | `PIP_INDEX_URL` | `https://pypi.org/simple` | `https://pypi.tuna.tsinghua.edu.cn/simple` |
 
-The docker-compose files read these from environment variables with international defaults. To switch to China mirrors, answer "yes" when the deploy script asks:
-
-```
-Use China mirrors (tuna.tsinghua.edu.cn)? [Y/n]:
-```
-
-Selecting China mirrors sets:
+To switch to China mirrors, set the environment variables before building:
 
 ```bash
-DOCKER_BUILDKIT=0
-APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
-PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export DOCKER_BUILDKIT=0
+export APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+docker compose build
 ```
-
-You can still override any of those values explicitly before invoking the script, or pass them as `--build-arg` to `docker build`.
 
 ### Rebuild after code changes
 
