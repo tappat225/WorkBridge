@@ -1,112 +1,164 @@
-<p align="center">
-  <img src="assets/CapOwn_concept.png" alt="CapOwn Concept" width="800">
-</p>
+# CapOwn
 
 <p align="center">
-  <a href="https://github.com/tappat225/CapOwn/stargazers">
-    <img src="https://img.shields.io/github/stars/tappat225/CapOwn?style=for-the-badge&color=f1c40f" alt="Stars">
-  </a>
-  <a href="https://github.com/tappat225/CapOwn/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/license-AGPL--3.0--only%20%2F%20Apache--2.0-blue?style=for-the-badge" alt="License">
-  </a>
-  <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-  </a>
-  <a href="https://github.com/tappat225/CapOwn/issues">
-    <img src="https://img.shields.io/github/issues/tappat225/CapOwn?style=for-the-badge&color=2ecc71" alt="Issues">
-  </a>
-  <a href="https://github.com/tappat225/CapOwn/pulls">
-    <img src="https://img.shields.io/github/issues-pr/tappat225/CapOwn?style=for-the-badge&color=3498db" alt="Pull Requests">
-  </a>
+  <img src="assets/CapOwn_readme_hero.png" alt="CapOwn architecture: AI Agent connects through Master to outbound-only Workers" width="100%">
 </p>
 
-<h1 align="center">CapOwn</h1>
+----
 
-<p align="center">
-  <strong>Multi-host remote operation &amp; AI Agent coordination system</strong><br>
-  Dispatch tasks across networks — Workers need only outbound HTTPS, no inbound ports.
-</p>
+Multi-host remote operation and AI Agent coordination.
 
-<p align="center">
-  <a href="README_zh.md">中文</a>
-</p>
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only%20%2F%20Apache--2.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.9-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Issues](https://img.shields.io/github/issues/tappat225/CapOwn)](https://github.com/tappat225/CapOwn/issues)
+[![Pull requests](https://img.shields.io/github/issues-pr/tappat225/CapOwn)](https://github.com/tappat225/CapOwn/pulls)
 
----
+CapOwn lets a local AI Agent use other machines as remote execution hands.
+Workers keep an outbound HTTPS/SSE connection to a Master, so machines behind
+NAT do not need public IPs or inbound ports.
 
-## ✨ Architecture
+**One Agent. Many devices. No inbound ports. Minimal-trust relay.**
 
-A central **Master** node manages and dispatches tasks to multiple **Worker** nodes over HTTPS + SSE, enabling cross-network execution without requiring inbound ports on worker machines.
+[中文](README_zh.md) | [User guide](docs/user_guide.md) | [Deployment guide](docs/deploy.md) | [Contributing](CONTRIBUTING.md)
 
-```
-[Client / Agent]
-    | (HTTPS POST: dispatch tasks)
-    v
-[Master (public IP) -- central router]
-    ^ (HTTPS POST: report results)
-    | (SSE long-poll: push task instructions)
-    |
-    +-- [Worker @ Node A]
-    +-- [Worker @ Node B]
-    +-- [Worker @ Node C]
-    ...
-```
+## Why CapOwn
 
-### 🧱 Design Constraints
+Modern AI coding agents often know what to do, but the right machine is
+somewhere else: a Linux test box behind NAT, a workstation with a GPU, a NAS, or
+a desktop with local-only tools.
 
-| Constraint | Description |
-|---|---|
-| 🔌 **All-outbound** | Workers only need outbound HTTPS. No inbound ports required. |
-| 🧭 **Central routing** | All inter-node communication routes through Master. |
-| 🧠 **Capability/intelligence split** | Workers provide execution; Agents provide LLM decisions. |
-| 🐳 **Dual deployment** | Container (Docker) or host (native). Container mode bind-mounts a host directory; host mode runs commands directly. |
+CapOwn focuses on a narrow first job:
 
-### 🧩 Components
+- install a lightweight Worker on another machine;
+- let a local Agent discover it;
+- run file, shell, and system information tasks through a Master relay;
+- get structured results and machine-readable errors back.
 
-| Component | Role |
-|---|---|
-| **Master** | Node registry, SSE broker, task router, auth gateway |
-| **Worker** | Lightweight daemon — connects to Master, executes tasks, reports results |
-| **Client** | CLI tool / SDK to dispatch tasks to Master |
+## Features
 
-> 📖 See [docs/architecture.md](docs/architecture.md) for the full architecture reference including directory structure.
+- **Outbound-only workers**: Workers connect to Master over HTTPS + SSE.
+- **Agent-friendly actions**: shell, file read/write/list, and system info.
+- **Compact capability vocabulary**: `shell.run`, `file.read`, `file.write`,
+  `file.list`, and `system.info`.
+- **Structured errors**: machine-readable codes such as `node_offline`,
+  `workspace_violation`, `timeout`, and `output_too_large`.
+- **Workspace controls**: file and shell operations are resolved against the
+  configured Worker workspace.
+- **Sync and async tasks**: use short synchronous calls or dispatch longer tasks
+  and poll task metadata.
+- **Minimal task persistence**: Master stores routing/status metadata, not raw
+  commands, file contents, or full stdout/stderr.
+- **Container or host Worker mode**: use Docker isolation or trusted native host
+  execution.
 
-## 🚀 Quick Deploy (Recommended)
+## Quick Start
 
-Use the interactive deploy script for a guided setup — no arguments needed:
+Use the interactive deployment script:
 
 ```bash
-cd CapOwn/
+git clone https://github.com/tappat225/CapOwn.git
+cd CapOwn
 python3 deploy.py
 ```
 
-The deploy script guides you through Master, Worker, or both with interactive prompts.
+Then configure the client from `client/config.ini.example`.
 
-> 📖 For manual deployment (writing config files, running Docker commands directly), see [docs/deploy.md](docs/deploy.md).
+The CapOwn client is designed for **AI Agents**. After configuration, direct your
+AI Agent to read [client/SKILL.md](client/SKILL.md) — the agent uses the `capown`
+commands to discover workers, run shell commands, read and write files.
 
-## ⚡ Quick Use
+You can also verify the connection manually:
 
 ```bash
-# List registered workers
 python client/capown_client.py nodes
-
-# Run a shell command on a worker
-python client/capown_client.py run worker-1 "uname -a"
+python client/capown_client.py info worker-1
+python client/capown_client.py run worker-1 "echo hello"
 ```
 
-> 📖 See [docs/user_guide.md](docs/user_guide.md) for the full user guide including configuration reference, all CLI commands, direct API usage, error codes, and capability vocabulary.
+For long-running tasks (`capown dispatch` + `capown task`), direct API calls,
+error codes, and capability vocabulary, see
+[docs/user_guide.md](docs/user_guide.md) and
+[client/SKILL.md](client/SKILL.md).
 
-## 🤝 Contributing
+## Architecture
 
-Contributions are welcome! Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Pull requests are accepted only from contributors who agree to the CapOwn CLA.
+```text
+AI Agent / CLI
+    |
+    | HTTPS task dispatch
+    v
+CapOwn Master
+    |
+    | SSE task events over outbound Worker connection
+    v
+CapOwn Worker
+    |
+    | local execution
+    v
+Target device workspace
+```
 
-## 📄 License
+### Components
 
-CapOwn uses an **open-core** licensing model:
+| Component | Directory | Role |
+|---|---|---|
+| Shared | `shared/` | Protocol models, auth helpers, config schemas |
+| Master | `master/` | Starlette control plane, registry, router, SSE broker |
+| Worker | `worker/` | Lightweight daemon and executors |
+| Client | `client/` | CLI and Agent-facing usage guide |
+| Docs | `docs/` | Deployment and user documentation |
+
+## CLI
+
+| Command | Description |
+|---|---|
+| `capown nodes` | List registered workers |
+| `capown info <node>` | Show worker system information |
+| `capown ls <node> [path]` | List files inside the worker workspace |
+| `capown read <node> <path>` | Read a file |
+| `capown write <node> <path> <content>` | Write a file |
+| `capown run <node> <command>` | Run a shell command |
+| `capown dispatch <node> <command>` | Dispatch an async shell task |
+| `capown task <task_id>` | Poll task metadata |
+
+Legacy command names remain available for backward compatibility.
+
+## Documentation
+
+- [User guide](docs/user_guide.md): client config, CLI commands, direct API
+  calls, error codes, and data retention.
+- [Deployment guide](docs/deploy.md): Docker, host mode Worker deployment,
+  Nginx/SSE proxy notes, and troubleshooting.
+- [CapOwn Agent Skill](client/SKILL.md): guidance for AI Agents using CapOwn.
+
+## Security Model
+
+CapOwn is a remote execution tool for machines you control.
+
+- Node and client APIs use separate bearer tokens.
+- Worker filesystem operations are resolved against a configured workspace.
+- Container mode relies on Docker namespace boundaries.
+- Host mode runs commands on the host and should be used only on trusted
+  machines.
+- The open-source Master persists only task metadata by default.
+
+See [docs/user_guide.md](docs/user_guide.md#data-retention) for data retention
+details.
+
+## Contributing
+
+Contributions are welcome. Before opening a pull request, read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Pull requests are
+accepted only from contributors who agree to the CapOwn CLA.
+
+## License
+
+CapOwn uses an open-core licensing model.
 
 | Scope | License |
 |---|---|
-| `client/`, `worker/`, `shared/`, `docs/`, deployment tooling, root configs | ![Apache-2.0](https://img.shields.io/badge/Apache--2.0-green?style=flat-square) |
-| `master/` (Community Master) | ![AGPL-3.0](https://img.shields.io/badge/AGPL--3.0--only-orange?style=flat-square) |
-| Commercial Master, hosted service, billing, tenant admin, enterprise | Proprietary |
+| `client/`, `worker/`, `shared/`, `docs/`, tests, deployment tooling, root project files | Apache-2.0 |
+| `master/` | AGPL-3.0-only |
+| Commercial Master, hosted service, billing, tenant admin, enterprise features | Proprietary |
 
-> 📖 See [LICENSE](LICENSE) for the full repository license notice.
+See [LICENSE](LICENSE) and the files under [LICENSES](LICENSES/) for details.
