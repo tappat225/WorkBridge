@@ -1,4 +1,6 @@
 # CapOwn Master — Nginx configuration snippet
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Merge into your HTTPS server block in /etc/nginx/sites-available/<your-domain>
 
 location /gb/ {

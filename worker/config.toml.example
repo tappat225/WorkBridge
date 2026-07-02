@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 [worker]
 mode = "container"            # "host" | "container" deployment mode
 node_id = "<unique-node-id>"

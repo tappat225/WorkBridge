@@ -6,6 +6,8 @@ Apache-2.0
 
 Canonical license text:
 
+LICENSES/Apache-2.0.txt
+
 https://www.apache.org/licenses/LICENSE-2.0
 
 This notice applies to the CapOwn client, worker, shared protocol,

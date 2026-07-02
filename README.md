@@ -104,7 +104,9 @@ See [docs/user_guide.md](docs/user_guide.md) for the full user guide including c
 
 ## Contributing
 
-Contributions are welcome. Please open an issue or pull request on GitHub.
+Contributions are welcome. Before opening a pull request, read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Pull requests are
+accepted only from contributors who agree to the CapOwn CLA.
 
 ## License
 

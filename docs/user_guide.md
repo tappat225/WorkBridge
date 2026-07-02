@@ -1,5 +1,7 @@
 # CapOwn — User Guide
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 ## Configuration
 
 Configuration is loaded from local files by default. Environment variables are supported as an override layer for container orchestration and secret injection.

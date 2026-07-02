@@ -104,7 +104,9 @@ python client/capown_client.py run worker-1 "uname -a"
 
 ## 贡献
 
-欢迎提交 Issue 或 Pull Request。
+欢迎贡献代码。在发起 Pull Request 之前，请阅读
+[CONTRIBUTING.md](CONTRIBUTING.md) 和 [CLA.md](CLA.md)。Pull Request
+仅接受同意 CapOwn CLA 的贡献者提交。
 
 ## License
 

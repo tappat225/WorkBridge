@@ -10,6 +10,8 @@ https://www.gnu.org/licenses/agpl-3.0.html
 
 Plain-text license:
 
+LICENSES/AGPL-3.0-only.txt
+
 https://www.gnu.org/licenses/agpl-3.0.txt
 
 This notice applies to the CapOwn Community Master files identified as

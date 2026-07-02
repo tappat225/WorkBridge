@@ -1,5 +1,7 @@
 # agent.md — CapOwn Programming Guide
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 > This file provides project-level context and rules for AI coding assistants (Claude, Copilot, etc.).
 
 ## Project Overview
@@ -260,3 +262,18 @@ Cross-directory imports must go through `shared/`. Master and Worker must not im
   docker-compose files accept these env vars for the host-side paths
   while the container-side paths stay fixed (`/etc/capown/`,
   `/app/data/`, `/workspace`).
+
+### 18. License and Contribution Boundaries
+
+- External contributions require agreement to the CapOwn CLA in `CLA.md`.
+- Preserve SPDX identifiers on new and modified files.
+- Files under `master/` are AGPL-3.0-only unless a file explicitly says
+  otherwise.
+- Files under `client/`, `worker/`, `shared/`, `docs/`, tests, deployment
+  tooling, and root-level project files are Apache-2.0 unless a file
+  explicitly says otherwise.
+- Shared code used by both open source and commercial components should live
+  under `shared/` with Apache-2.0 licensing.
+- Proprietary or commercial components must not copy implementation code from
+  the AGPL-licensed `master/` tree unless the maintainer has intentionally
+  handled the AGPL licensing implications.

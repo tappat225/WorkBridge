@@ -1,5 +1,7 @@
 # CapOwn — Deployment Guide
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 ## Prerequisites
 
 - Docker and Docker Compose installed on the Master host

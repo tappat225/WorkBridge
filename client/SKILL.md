@@ -1,5 +1,7 @@
 # CapOwn Client — Agent Usage Guide
 
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 Use this client to dispatch tasks to a configured CapOwn worker through the Master API.
 
 ## Setup
